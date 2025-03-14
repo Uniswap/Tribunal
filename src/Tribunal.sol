@@ -2,9 +2,11 @@
 pragma solidity ^0.8.28;
 
 import {ValidityLib} from "the-compact/src/lib/ValidityLib.sol";
+import {EfficiencyLib} from "the-compact/src/lib/EfficiencyLib.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
 import {SafeTransferLib} from "the-compact/lib/solady/src/utils/SafeTransferLib.sol";
 import {BlockNumberish} from "./BlockNumberish.sol";
+import {DecayParameterLib} from "./lib/DecayParameterLib.sol";
 
 /**
  * @title Tribunal
@@ -19,6 +21,8 @@ contract Tribunal is BlockNumberish {
     using ValidityLib for uint256;
     using FixedPointMathLib for uint256;
     using SafeTransferLib for address;
+    using EfficiencyLib for bool;
+    using DecayParameterLib for uint256[];
 
     // ======== Events ========
     event Fill(
@@ -26,7 +30,8 @@ contract Tribunal is BlockNumberish {
         address indexed claimant,
         bytes32 claimHash,
         uint256 fillAmount,
-        uint256 claimAmount
+        uint256 claimAmount,
+        uint256 targetBlock
     );
 
     // ======== Custom Errors ========
@@ -61,6 +66,7 @@ contract Tribunal is BlockNumberish {
         uint256 minimumAmount; // Minimum fill amount.
         uint256 baselinePriorityFee; // Base fee threshold where scaling kicks in.
         uint256 scalingFactor; // Fee scaling multiplier (1e18 baseline).
+        uint256[] decayCurve; // Block durations, fill increases, & claim decreases.
         bytes32 salt; // Replay protection parameter.
     }
 
@@ -69,13 +75,13 @@ contract Tribunal is BlockNumberish {
     /// @notice Base scaling factor (1e18).
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
-    /// @notice keccak256("Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,bytes32 salt)")
+    /// @notice keccak256("Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] decayCurve,bytes32 salt)")
     bytes32 internal constant MANDATE_TYPEHASH =
-        0x52c75464356e20084ae43acac75087fbf0e0c678e7ffa326f369f37e88696036;
+        0x74d9c10530859952346f3e046aa2981a24bb7524b8394eb45a9deddced9d6501;
 
-    /// @notice keccak256("Compact(address arbiter,address sponsor,uint256 nonce,uint256 expires,uint256 id,uint256 amount,Mandate mandate)Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,bytes32 salt)")
+    /// @notice keccak256("Compact(address arbiter,address sponsor,uint256 nonce,uint256 expires,uint256 id,uint256 amount,Mandate mandate)Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] decayCurve,bytes32 salt)")
     bytes32 internal constant COMPACT_TYPEHASH_WITH_MANDATE =
-        0x27f09e0bb8ce2ae63380578af7af85055d3ada248c502e2378b85bc3d05ee0b0;
+        0xfd9cda0e5e31a3a3476cb5b57b07e2a4d6a12815506f69c880696448cd9897a5;
 
     // ======== Storage ========
 
@@ -138,7 +144,7 @@ contract Tribunal is BlockNumberish {
         uint256 targetBlock
     ) external payable returns (bytes32 mandateHash, uint256 fillAmount, uint256 claimAmount) {
         uint256 blockNumberish = _getBlockNumberish();
-        if (blockNumberish != targetBlock) {
+        if ((blockNumberish != targetBlock).and(mandate.decayCurve.length == 0)) {
             revert InvalidTargetBlock(blockNumberish, targetBlock);
         }
 
@@ -219,6 +225,7 @@ contract Tribunal is BlockNumberish {
                 mandate.minimumAmount,
                 mandate.baselinePriorityFee,
                 mandate.scalingFactor,
+                keccak256(abi.encodePacked(mandate.decayCurve)),
                 mandate.salt
             )
         );
@@ -267,8 +274,8 @@ contract Tribunal is BlockNumberish {
         // Get the priority fee above baseline.
         uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
 
-        // If no fee above baseline, return original amounts.
-        if (priorityFeeAboveBaseline == 0) {
+        // If no fee above baseline or no scaling factor, return original amounts.
+        if ((priorityFeeAboveBaseline == 0).or(scalingFactor == 1e18)) {
             return (minimumAmount, maximumAmount);
         }
 
@@ -314,6 +321,10 @@ contract Tribunal is BlockNumberish {
         // Ensure that the mandate has not expired.
         mandate.expires.later();
 
+        // Examine the decay curve.
+        (uint256 currentFillIncrease, uint256 currentClaimDecrease) =
+            mandate.decayCurve.getCalculatedValues(_getBlockNumberish());
+
         // Derive mandate hash.
         mandateHash = deriveMandateHash(mandate);
 
@@ -326,8 +337,8 @@ contract Tribunal is BlockNumberish {
 
         // Derive fill and claim amounts.
         (fillAmount, claimAmount) = deriveAmounts(
-            compact.amount,
-            mandate.minimumAmount,
+            compact.amount - currentClaimDecrease,
+            mandate.minimumAmount + currentFillIncrease,
             mandate.baselinePriorityFee,
             mandate.scalingFactor
         );
@@ -343,7 +354,7 @@ contract Tribunal is BlockNumberish {
         }
 
         // Emit the fill event.
-        emit Fill(compact.sponsor, claimant, claimHash, fillAmount, claimAmount);
+        emit Fill(compact.sponsor, claimant, claimHash, fillAmount, claimAmount, targetBlock);
 
         // Process the directive.
         _processDirective(

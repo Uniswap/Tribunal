@@ -133,6 +133,7 @@ abstract contract MockSetup is Test {
             minimumAmount: minimumFillAmount,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: new uint256[](0),
             salt: bytes32(uint256(1))
         });
     }
@@ -166,7 +167,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
 
         vm.expectEmit(true, true, false, true, address(tribunal));
-        emit Tribunal.Fill(sponsor, filler, claimHash, minimumFillAmount, claimAmount);
+        emit Tribunal.Fill(sponsor, filler, claimHash, minimumFillAmount, claimAmount, 0);
         tribunal.fill(order.orderId, order.fillInstructions[0].originData, abi.encode(filler));
     }
 }

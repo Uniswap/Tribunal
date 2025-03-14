@@ -13,14 +13,16 @@ contract TribunalTest is Test {
     MockERC20 public token;
     address sponsor;
 
+    uint256[] public emptyDecayCurve;
+
     // Mandate type string
     string constant MANDATE_TYPESTRING =
-        "Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,bytes32 salt)";
+        "Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] decayCurve,bytes32 salt)";
     bytes32 constant MANDATE_TYPEHASH = keccak256(bytes(MANDATE_TYPESTRING));
 
     // Compact type string with mandate witness
     string constant COMPACT_TYPESTRING_WITH_MANDATE =
-        "Compact(address arbiter,address sponsor,uint256 nonce,uint256 expires,uint256 id,uint256 amount,Mandate mandate)Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,bytes32 salt)";
+        "Compact(address arbiter,address sponsor,uint256 nonce,uint256 expires,uint256 id,uint256 amount,Mandate mandate)Mandate(uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] decayCurve,bytes32 salt)";
     bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
         keccak256(bytes(COMPACT_TYPESTRING_WITH_MANDATE));
 
@@ -31,6 +33,8 @@ contract TribunalTest is Test {
         tribunal = new Tribunal();
         token = new MockERC20();
         (sponsor,) = makeAddrAndKey("sponsor");
+
+        emptyDecayCurve = new uint256[](0);
     }
 
     /**
@@ -52,6 +56,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -66,6 +71,7 @@ contract TribunalTest is Test {
                 mandate.minimumAmount,
                 mandate.baselinePriorityFee,
                 mandate.scalingFactor,
+                keccak256(abi.encodePacked(mandate.decayCurve)),
                 mandate.salt
             )
         );
@@ -85,6 +91,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(2))
         });
 
@@ -99,6 +106,7 @@ contract TribunalTest is Test {
                 mandate.minimumAmount,
                 mandate.baselinePriorityFee,
                 mandate.scalingFactor,
+                keccak256(abi.encodePacked(mandate.decayCurve)),
                 mandate.salt
             )
         );
@@ -118,6 +126,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -153,6 +162,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -188,6 +198,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -210,7 +221,7 @@ contract TribunalTest is Test {
         assertFalse(tribunal.filled(claimHash));
 
         vm.expectEmit(true, true, false, true, address(tribunal));
-        emit Tribunal.Fill(sponsor, address(this), claimHash, 1 ether, 1 ether);
+        emit Tribunal.Fill(sponsor, address(this), claimHash, 1 ether, 1 ether, 0);
 
         tribunal.fill(claim, mandate, address(this));
         assertTrue(tribunal.filled(claimHash));
@@ -406,6 +417,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 0,
             scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -443,6 +455,7 @@ contract TribunalTest is Test {
             minimumAmount: 100e18,
             baselinePriorityFee: 0,
             scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -473,7 +486,7 @@ contract TribunalTest is Test {
             tribunal.deriveClaimHash(claim.compact, tribunal.deriveMandateHash(mandate));
 
         vm.expectEmit(true, true, false, true, address(tribunal));
-        emit Tribunal.Fill(sponsor, address(this), claimHash, 100e18, 1 ether);
+        emit Tribunal.Fill(sponsor, address(this), claimHash, 100e18, 1 ether, 0);
 
         // Execute fill
         tribunal.fill(claim, mandate, address(this));
@@ -496,6 +509,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -545,6 +559,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 
@@ -597,6 +612,7 @@ contract TribunalTest is Test {
             minimumAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
+            decayCurve: emptyDecayCurve,
             salt: bytes32(uint256(1))
         });
 

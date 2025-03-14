@@ -29,15 +29,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             address claimant
         ) = _parseCalldata(originData, fillerData);
 
-        _fill(
-            chainId,
-            compact,
-            sponsorSignature,
-            allocatorSignature,
-            mandate,
-            claimant,
-            _getBlockNumberish()
-        );
+        _fill(chainId, compact, sponsorSignature, allocatorSignature, mandate, claimant, uint256(0));
     }
 
     /**
@@ -88,31 +80,33 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         )
     {
         /*
-         * Need 19 words in originData at minimum:
+         * Need 22 words in originData at minimum:
          *  - 1 word for offset to claim (dynamic struct).
-         *  - 7 words for mandate (fixed struct).
+         *  - 1 word for offset to mandate (dynamic struct).
          *  - 7 words for fixed claim fields.
-         *  - 2 words for signature offsets.
-         *  - 2 words for signature lengths (assuming empty).
-         * Also ensure no funny business with the claim pointer (should be 0x100).
+         *  - 7 words for fixed mandate fields.
+         *  - 3 words for signature and decay offsets.
+         *  - 3 words for signature and decay lengths (assuming empty).
+         * Also ensure no funny business with the claim pointer (should be 0x40).
          * Filler data should also have at least one word for claimant with no dirty bits.
          */
         assembly ("memory-safe") {
             if or(
-                or(lt(originData.length, 0x260), xor(calldataload(originData.offset), 0x100)),
+                or(lt(originData.length, 0x2c0), xor(calldataload(originData.offset), 0x40)),
                 or(lt(fillerData.length, 0x20), shr(calldataload(fillerData.offset), 0xa0))
             ) { revert(0, 0) }
         }
 
-        // Get the claim struct encoded as a bytes array with bounds checks.
+        // Get the claim & mandate structs encoded as bytes arrays with bounds checks.
         bytes calldata encodedClaim = LibBytes.dynamicStructInCalldata(originData, 0x00);
+        bytes calldata encodedMandate = LibBytes.dynamicStructInCalldata(originData, 0x20);
 
         // Extract static structs and other static variables directly.
         // Note: This doesn't sanitize struct elements; that should happen downstream.
         assembly ("memory-safe") {
             chainId := calldataload(encodedClaim.offset)
             compact := add(encodedClaim.offset, 0x20)
-            mandate := add(originData.offset, 0x20)
+            mandate := encodedMandate.offset
             claimant := calldataload(fillerData.offset)
         }
 
