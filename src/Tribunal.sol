@@ -328,6 +328,9 @@ contract Tribunal is BlockNumberish {
         uint256 currentFillIncrease;
         uint256 currentClaimDecrease;
         if (targetBlock != 0) {
+            if (targetBlock > _getBlockNumberish()) {
+                revert InvalidTargetBlock(targetBlock, _getBlockNumberish());
+            }
             // Derive the total blocks passed since the target block.
             uint256 blocksPassed = _getBlockNumberish() - targetBlock;
 

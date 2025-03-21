@@ -44,6 +44,41 @@ contract TribunalTest is Test {
         assertEq(tribunal.name(), "Tribunal");
     }
 
+    function test_fillRevertsOnInvalidTargetBlock() public {
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        // Send ETH with the fill
+        vm.expectRevert(
+            abi.encodeWithSignature("InvalidTargetBlock(uint256,uint256)", 100, vm.getBlockNumber())
+        );
+        tribunal.fill{value: 1 ether}(claim, mandate, address(this), 100, 10);
+    }
+
     /**
      * @notice Verify that mandate hash derivation follows EIP-712 structured data hashing
      * @dev Tests mandate hash derivation with a salt value of 1

@@ -62,6 +62,8 @@ abstract contract MockSetup is Test {
     address filler;
     uint256 minimumFillAmount;
     uint256 claimAmount;
+    uint256 targetBlock;
+    uint256 maximumBlocksAfterTarget;
     ResolvedCrossChainOrder public order;
     Tribunal.Claim public claim;
 
@@ -72,7 +74,8 @@ abstract contract MockSetup is Test {
         filler = makeAddr("Filler");
         minimumFillAmount = 1 ether;
         claimAmount = 10 ether;
-
+        targetBlock = 100;
+        maximumBlocksAfterTarget = 10;
         address arbiter = makeAddr("Arbiter");
 
         ERC7683Tribunal.Mandate memory mandate = _getMandate();
@@ -104,7 +107,7 @@ abstract contract MockSetup is Test {
         FillInstruction memory fillInstruction = FillInstruction({
             destinationChainId: 1,
             destinationSettler: bytes32(uint256(uint160(address(tribunal)))),
-            originData: abi.encode(claim, mandate)
+            originData: abi.encode(claim, mandate, targetBlock, maximumBlocksAfterTarget)
         });
         Output[] memory maxSpent = new Output[](1);
         maxSpent[0] = outputMaxSpent;
@@ -144,7 +147,11 @@ contract ERC7683Tribunal_Fill is MockSetup {
         vm.expectRevert();
         ERC7683Tribunal.Mandate memory mandate = _getMandate();
 
-        tribunal.fill(order.orderId, abi.encode(claim, mandate, uint8(1)), abi.encode(filler));
+        tribunal.fill(
+            order.orderId,
+            abi.encode(claim, mandate, targetBlock, maximumBlocksAfterTarget, uint8(1)),
+            abi.encode(filler)
+        );
     }
 
     function test_revert_InvalidFillerData() public {
@@ -153,7 +160,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
 
         tribunal.fill(
             order.orderId,
-            abi.encode(claim, mandate),
+            abi.encode(claim, mandate, targetBlock, maximumBlocksAfterTarget),
             abi.encode(filler, makeAddr("AdditionalAddress"))
         );
     }
@@ -166,8 +173,10 @@ contract ERC7683Tribunal_Fill is MockSetup {
         bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
 
+        vm.roll(targetBlock);
+
         vm.expectEmit(true, true, false, true, address(tribunal));
-        emit Tribunal.Fill(sponsor, filler, claimHash, minimumFillAmount, claimAmount, 0);
+        emit Tribunal.Fill(sponsor, filler, claimHash, minimumFillAmount, claimAmount, targetBlock);
         tribunal.fill(order.orderId, order.fillInstructions[0].originData, abi.encode(filler));
     }
 }

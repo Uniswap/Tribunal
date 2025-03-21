@@ -26,6 +26,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
+            uint256 targetBlock,
+            uint256 maximumBlocksAfterTarget,
             address claimant
         ) = _parseCalldata(originData, fillerData);
 
@@ -36,8 +38,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             allocatorSignature,
             mandate,
             claimant,
-            uint256(0),
-            uint256(0)
+            targetBlock,
+            maximumBlocksAfterTarget
         );
     }
 
@@ -59,6 +61,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
+            ,
+            ,
             address claimant
         ) = _parseCalldata(originData, fillerData);
 
@@ -74,6 +78,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
      * @return sponsorSignature The sponsor signature from the Claim.
      * @return allocatorSignature The allocator signature from the Claim.
      * @return mandate The Mandate struct.
+     * @return targetBlock The block number to target for the fill.
+     * @return maximumBlocksAfterTarget Blocks after target that are still fillable.
      * @return claimant The claimant address.
      */
     function _parseCalldata(bytes calldata originData, bytes calldata fillerData)
@@ -85,13 +91,17 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
+            uint256 targetBlock,
+            uint256 maximumBlocksAfterTarget,
             address claimant
         )
     {
         /*
-         * Need 22 words in originData at minimum:
+         * Need 24 words in originData at minimum:
          *  - 1 word for offset to claim (dynamic struct).
          *  - 1 word for offset to mandate (dynamic struct).
+         *  - 1 word for target block.
+         *  - 1 word for maximum blocks after target.
          *  - 7 words for fixed claim fields.
          *  - 7 words for fixed mandate fields.
          *  - 3 words for signature and decay offsets.
@@ -101,7 +111,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          */
         assembly ("memory-safe") {
             if or(
-                or(lt(originData.length, 0x2c0), xor(calldataload(originData.offset), 0x40)),
+                or(lt(originData.length, 0x300), xor(calldataload(originData.offset), 0x80)),
                 or(lt(fillerData.length, 0x20), shr(calldataload(fillerData.offset), 0xa0))
             ) { revert(0, 0) }
         }
@@ -117,6 +127,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             compact := add(encodedClaim.offset, 0x20)
             mandate := encodedMandate.offset
             claimant := calldataload(fillerData.offset)
+            targetBlock := calldataload(add(originData.offset, 0x40))
+            maximumBlocksAfterTarget := calldataload(add(originData.offset, 0x60))
         }
 
         // Get the sponsorSignature & allocatorSignature bytes arrays with bounds checks.
