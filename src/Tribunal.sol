@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {LibBytes} from "solady/utils/LibBytes.sol";
 import {ValidityLib} from "the-compact/src/lib/ValidityLib.sol";
 import {EfficiencyLib} from "the-compact/src/lib/EfficiencyLib.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
@@ -40,6 +41,7 @@ contract Tribunal is BlockNumberish {
     error AlreadyClaimed();
     error InvalidTargetBlockDesignation();
     error InvalidTargetBlock(uint256 blockNumber, uint256 targetBlockNumber);
+    error NotSponsor();
 
     // ======== Type Declarations ========
 
@@ -157,6 +159,34 @@ contract Tribunal is BlockNumberish {
             claimant,
             targetBlock,
             maximumBlocksAfterTarget
+        );
+    }
+
+    function cancel(Claim calldata claim, Mandate calldata mandate)
+        external
+        returns (bytes32 claimHash)
+    {
+        return _cancel(
+            claim.chainId,
+            claim.compact,
+            claim.sponsorSignature,
+            claim.allocatorSignature,
+            mandate,
+            true
+        );
+    }
+
+    function cancelChainExclusive(Compact calldata compact, Mandate calldata mandate)
+        external
+        returns (bytes32 claimHash)
+    {
+        return _cancel(
+            uint256(0),
+            compact,
+            LibBytes.emptyCalldata(), // sponsorSignature
+            LibBytes.emptyCalldata(), // allocatorSignature
+            mandate,
+            false
         );
     }
 
@@ -393,6 +423,64 @@ contract Tribunal is BlockNumberish {
             targetBlock,
             maximumBlocksAfterTarget
         );
+
+        // Return any unused native tokens to the caller.
+        uint256 remaining = address(this).balance;
+        if (remaining > 0) {
+            msg.sender.safeTransferETH(remaining);
+        }
+    }
+
+    function _cancel(
+        uint256 chainId,
+        Compact calldata compact,
+        bytes calldata sponsorSignature,
+        bytes calldata allocatorSignature,
+        Mandate calldata mandate,
+        bool directive
+    ) internal returns (bytes32 claimHash) {
+        // Ensure the claim can only be canceled by the sponsor.
+        if (msg.sender != compact.sponsor) {
+            revert NotSponsor();
+        }
+
+        // Ensure that the mandate has not expired.
+        mandate.expires.later();
+
+        // Derive mandate hash.
+        bytes32 mandateHash = deriveMandateHash(mandate);
+
+        // Derive and check claim hash.
+        claimHash = deriveClaimHash(compact, mandateHash);
+        if (_dispositions[claimHash]) {
+            revert AlreadyClaimed();
+        }
+        _dispositions[claimHash] = true;
+
+        // Emit the fill event even when cancelled.
+        emit Fill(
+            compact.sponsor,
+            compact.sponsor, /*claimant*/
+            claimHash,
+            0, /*fillAmounts*/
+            0, /*claimAmount*/
+            0 /*targetBlock*/
+        );
+
+        if (directive) {
+            // Process the directive.
+            _processDirective(
+                chainId,
+                compact,
+                sponsorSignature,
+                allocatorSignature,
+                mandateHash,
+                compact.sponsor, // claimant
+                0, // claimAmount
+                0, // targetBlock,
+                0 // maximumBlocksAfterTarget
+            );
+        }
 
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
