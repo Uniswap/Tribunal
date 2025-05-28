@@ -19,7 +19,10 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
      * @param originData The encoded Claim and Mandate data.
      * @param fillerData The encoded claimant address.
      */
-    function fill(bytes32, bytes calldata originData, bytes calldata fillerData) external {
+    function fill(bytes32, bytes calldata originData, bytes calldata fillerData)
+        external
+        nonReentrant
+    {
         (
             uint256 chainId,
             Compact calldata compact,

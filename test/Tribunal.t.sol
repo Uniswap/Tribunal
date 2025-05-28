@@ -5,6 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {ReentrantReceiver} from "./mocks/ReentrantReceiver.sol";
 
 contract TribunalTest is Test {
     using FixedPointMathLib for uint256;
@@ -671,5 +672,280 @@ contract TribunalTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("InvalidGasPrice()"));
         tribunal.fill(claim, mandate, address(this));
+    }
+
+    function test_FillWithReentrancyAttack() public {
+        // Deploy reentrant receiver
+        ReentrantReceiver reentrantReceiver = new ReentrantReceiver{value: 10 ether}(tribunal);
+
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(reentrantReceiver),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        // Record initial recipient balance
+        uint256 initialRecipientBalance = address(reentrantReceiver).balance;
+
+        // Send ETH with the fill
+        uint256 initialSenderBalance = address(this).balance;
+
+        // sending way too much ETH which could be stolen without reentrancy guard by the reentrant receiver
+        Tribunal.Claim memory reentrantClaim = reentrantReceiver.getClaim();
+        Tribunal.Mandate memory reentrantMandate = reentrantReceiver.getMandate();
+        vm.expectCall(
+            address(tribunal),
+            abi.encodeWithSignature(
+                "fill((uint256,(address,address,uint256,uint256,uint256,uint256),bytes,bytes),(address,uint256,address,uint256,uint256,uint256,uint256[],bytes32),address)",
+                reentrantClaim,
+                reentrantMandate,
+                address(reentrantReceiver)
+            )
+        );
+        tribunal.fill{value: 5 ether}(claim, mandate, address(this));
+
+        // Check that reentrant receiver still has received their tokens
+        assertEq(
+            address(reentrantReceiver).balance, initialRecipientBalance + mandate.minimumAmount
+        );
+        // Check that sender sent exactly 1 ETH (2 ETH sent - 1 ETH refunded)
+        assertEq(address(this).balance, initialSenderBalance - mandate.minimumAmount);
+    }
+
+    function test_cancelSuccessfully() public {
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        bytes32 claimHash =
+            tribunal.deriveClaimHash(claim.compact, tribunal.deriveMandateHash(mandate));
+
+        // Cancel the claim
+        vm.prank(sponsor);
+        vm.expectEmit(true, true, false, true, address(tribunal));
+        emit Tribunal.Fill(sponsor, sponsor, claimHash, 0, 0, 0);
+        tribunal.cancel(claim, mandate);
+
+        // Send ETH with the fill for a cancelled claim
+        uint256 initialSenderBalance = address(this).balance;
+        vm.expectRevert(abi.encodeWithSelector(Tribunal.AlreadyClaimed.selector), address(tribunal));
+        tribunal.fill{value: 2 ether}(claim, mandate, address(this));
+
+        // Check that recipient received no eth, as the claim was cancelled
+        assertEq(address(0xBEEF).balance, 0 ether);
+        // Check that sender sent no eth, as the claim was cancelled
+        assertEq(initialSenderBalance, address(this).balance);
+    }
+
+    function test_cancelRevertsOnInvalidSponsor(address attacker) public {
+        vm.assume(attacker != sponsor);
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        // Cancel the claim as a non-sponsor
+        vm.expectRevert(abi.encodeWithSelector(Tribunal.NotSponsor.selector), address(tribunal));
+        tribunal.cancel(claim, mandate);
+    }
+
+    function test_cancelRevertsOnFilledClaim() public {
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        // Send ETH with the fill for a cancelled claim
+        uint256 initialSenderBalance = address(this).balance;
+        bytes32 claimHash =
+            tribunal.deriveClaimHash(claim.compact, tribunal.deriveMandateHash(mandate));
+        vm.expectEmit(true, true, false, true, address(tribunal));
+        emit Tribunal.Fill(
+            sponsor, address(this), claimHash, mandate.minimumAmount, claim.compact.amount, 0
+        );
+        tribunal.fill{value: 2 ether}(claim, mandate, address(this));
+
+        // Check that recipient received exactly 1 ETH
+        assertEq(address(0xBEEF).balance, mandate.minimumAmount);
+        // Check that sender sent exactly 1 ETH (2 ETH sent - 1 ETH refunded)
+        assertEq(address(this).balance, initialSenderBalance - mandate.minimumAmount);
+
+        // Cancel the claim
+        vm.prank(sponsor);
+        vm.expectRevert(abi.encodeWithSelector(Tribunal.AlreadyClaimed.selector), address(tribunal));
+        tribunal.cancel(claim, mandate);
+    }
+
+    function test_cancelRevertsOnExpiredMandate(uint8 expires) public {
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(expires),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        // warp to after the expiry time
+        vm.warp(mandate.expires + 1);
+
+        // Cancel the claim
+        vm.prank(sponsor);
+        vm.expectRevert(abi.encodeWithSignature("Expired(uint256)", expires), address(tribunal));
+        tribunal.cancel(claim, mandate);
+    }
+
+    function test_cancelSuccessfullyChainExclusive() public {
+        // Create a mandate for native token settlement
+        Tribunal.Mandate memory mandate = Tribunal.Mandate({
+            recipient: address(0xBEEF),
+            expires: uint256(block.timestamp + 1),
+            token: address(0),
+            minimumAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            decayCurve: emptyDecayCurve,
+            salt: bytes32(uint256(1))
+        });
+
+        // Create compact
+        Tribunal.Claim memory claim = Tribunal.Claim({
+            chainId: block.chainid,
+            compact: Tribunal.Compact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                id: 1,
+                amount: 1 ether
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        bytes32 claimHash =
+            tribunal.deriveClaimHash(claim.compact, tribunal.deriveMandateHash(mandate));
+
+        // Cancel the claim
+        vm.prank(sponsor);
+        vm.expectEmit(true, true, false, true, address(tribunal));
+        emit Tribunal.Fill(sponsor, sponsor, claimHash, 0, 0, 0);
+        tribunal.cancelChainExclusive(claim.compact, mandate);
+
+        // Send ETH with the fill for a cancelled claim
+        uint256 initialSenderBalance = address(this).balance;
+        vm.expectRevert(abi.encodeWithSelector(Tribunal.AlreadyClaimed.selector), address(tribunal));
+        tribunal.fill{value: 2 ether}(claim, mandate, address(this));
+
+        // Check that recipient received no eth, as the claim was cancelled
+        assertEq(address(0xBEEF).balance, 0 ether);
+        // Check that sender sent no eth, as the claim was cancelled
+        assertEq(initialSenderBalance, address(this).balance);
     }
 }
