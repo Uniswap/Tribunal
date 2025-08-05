@@ -17,6 +17,7 @@ type DecayParameter is uint256;
  */
 library DecayParameterLib {
     error DecayBlocksExceeded();
+    error DecayInvalidParameters();
 
     // Constants for bit manipulation
     uint256 private constant BLOCK_DURATION_BITS = 16;
@@ -40,17 +41,21 @@ library DecayParameterLib {
     /**
      * @dev Create a new DecayParameter from individual components
      * @param blockDuration Duration in blocks (16 bits)
-     * @param fillIncrease Amount to increase on fill (120 bits)
-     * @param claimDecrease Amount to decrease on claim (120 bits)
+     * @param fillIncreaseBPS Amount to increase on fill (120 bits)
+     * @param claimDecreaseBPS Amount to decrease on claim (120 bits)
      * @return The packed DecayParameter
      */
-    function create(uint16 blockDuration, uint16 fillIncrease, uint16 claimDecrease)
+    function create(uint16 blockDuration, uint16 fillIncreaseBPS, uint16 claimDecreaseBPS)
         internal
         pure
         returns (DecayParameter)
     {
-        uint256 packed = uint256(claimDecrease) << CLAIM_DECREASE_SHIFT;
-        packed |= uint256(fillIncrease) << FILL_INCREASE_SHIFT;
+        if (claimDecreaseBPS > 10_000) {
+            revert DecayInvalidParameters();
+        }
+
+        uint256 packed = uint256(claimDecreaseBPS) << CLAIM_DECREASE_SHIFT;
+        packed |= uint256(fillIncreaseBPS) << FILL_INCREASE_SHIFT;
         packed |= uint256(blockDuration) << BLOCK_DURATION_SHIFT;
 
         return DecayParameter.wrap(packed);
@@ -211,6 +216,10 @@ library DecayParameterLib {
                         blocksCounted + duration,
                         false // Round down for claimDecrease
                     );
+                }
+
+                if (currentClaimDecrease > 10_000) {
+                    revert DecayInvalidParameters();
                 }
 
                 return (currentFillIncrease, currentClaimDecrease);
