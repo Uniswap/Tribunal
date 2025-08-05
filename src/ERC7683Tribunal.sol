@@ -5,6 +5,7 @@ import {LibBytes} from "solady/utils/LibBytes.sol";
 
 import {IDestinationSettler} from "./Interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
+import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 /// @title ERC7683Tribunal
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
@@ -25,7 +26,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     {
         (
             uint256 chainId,
-            Compact calldata compact,
+            BatchCompact calldata compact,
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
@@ -60,7 +61,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     {
         (
             uint256 chainId,
-            Compact calldata compact,
+            BatchCompact calldata compact,
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
@@ -90,7 +91,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         pure
         returns (
             uint256 chainId,
-            Compact calldata compact,
+            BatchCompact calldata compact,
             bytes calldata sponsorSignature,
             bytes calldata allocatorSignature,
             Mandate calldata mandate,
@@ -105,10 +106,10 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          *  - 1 word for offset to mandate (dynamic struct).
          *  - 1 word for target block.
          *  - 1 word for maximum blocks after target.
-         *  - 7 words for fixed claim fields.
+         *  - 5 words for fixed claim fields.
          *  - 7 words for fixed mandate fields.
-         *  - 3 words for signature and decay offsets.
-         *  - 3 words for signature and decay lengths (assuming empty).
+         *  - 4 words for commitments, sponsor signature, allocator Signature and decay offsets.
+         *  - 4 words for commitments, sponsor signature, allocator Signature and decay lengths (assuming empty).
          * Also ensure no funny business with the claim pointer (should be 0x40).
          * Filler data should also have at least one word for claimant with no dirty bits.
          */
@@ -135,9 +136,9 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         }
 
         // Get the sponsorSignature & allocatorSignature bytes arrays with bounds checks.
-        // The two signature offsets are at words 8 + 9 in encoded claim, since
-        // the first word is chainId and the next six make up the compact static struct.
-        sponsorSignature = LibBytes.bytesInCalldata(encodedClaim, 0xe0);
-        allocatorSignature = LibBytes.bytesInCalldata(encodedClaim, 0x100);
+        // The two signature offsets are at words 3 + 4 in encoded claim, since
+        // the first word is chainId and the second is offset of the dynamic batch compact.
+        sponsorSignature = LibBytes.bytesInCalldata(encodedClaim, 0x40);
+        allocatorSignature = LibBytes.bytesInCalldata(encodedClaim, 0x60);
     }
 }

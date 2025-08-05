@@ -11,22 +11,29 @@ type DecayParameter is uint256;
  * @title DecayParameterLib
  * @dev Library for the DecayParameter type which packs three values:
  *      - blockDuration (16 bits): Duration in blocks
- *      - fillIncrease (120 bits): Amount to increase on fill
- *      - claimDecrease (120 bits): Amount to decrease on claim
+ *      - fillIncrease (16 bits): Basis points to increase on fill
+ *      - claimDecrease (16 bits): Basis points to decrease on claim
+ *      - empty (208 bits): Empty bits
  */
 library DecayParameterLib {
     error DecayBlocksExceeded();
 
     // Constants for bit manipulation
-    uint256 private constant FILL_INCREASE_BITS = 120;
-    uint256 private constant CLAIM_DECREASE_BITS = 120;
+    uint256 private constant BLOCK_DURATION_BITS = 16;
+    uint256 private constant FILL_INCREASE_BITS = 16;
+    uint256 private constant CLAIM_DECREASE_BITS = 16;
+    uint256 private constant EMPTY_BITS =
+        256 - (BLOCK_DURATION_BITS + FILL_INCREASE_BITS + CLAIM_DECREASE_BITS);
 
     // Bit positions
-    uint256 private constant FILL_INCREASE_SHIFT = CLAIM_DECREASE_BITS;
-    uint256 private constant BLOCK_DURATION_SHIFT = CLAIM_DECREASE_BITS + FILL_INCREASE_BITS;
+    uint256 private constant CLAIM_DECREASE_SHIFT = EMPTY_BITS;
+    uint256 private constant FILL_INCREASE_SHIFT = CLAIM_DECREASE_BITS + EMPTY_BITS;
+    uint256 private constant BLOCK_DURATION_SHIFT =
+        CLAIM_DECREASE_BITS + FILL_INCREASE_BITS + EMPTY_BITS;
 
     // Bit masks
-    uint256 private constant CLAIM_DECREASE_MASK = ((1 << CLAIM_DECREASE_BITS) - 1);
+    uint256 private constant CLAIM_DECREASE_MASK =
+        ((1 << CLAIM_DECREASE_BITS) - 1) << CLAIM_DECREASE_SHIFT;
     uint256 private constant FILL_INCREASE_MASK =
         ((1 << FILL_INCREASE_BITS) - 1) << FILL_INCREASE_SHIFT;
 
@@ -37,12 +44,12 @@ library DecayParameterLib {
      * @param claimDecrease Amount to decrease on claim (120 bits)
      * @return The packed DecayParameter
      */
-    function create(uint16 blockDuration, uint120 fillIncrease, uint120 claimDecrease)
+    function create(uint16 blockDuration, uint16 fillIncrease, uint16 claimDecrease)
         internal
         pure
         returns (DecayParameter)
     {
-        uint256 packed = uint256(claimDecrease);
+        uint256 packed = uint256(claimDecrease) << CLAIM_DECREASE_SHIFT;
         packed |= uint256(fillIncrease) << FILL_INCREASE_SHIFT;
         packed |= uint256(blockDuration) << BLOCK_DURATION_SHIFT;
 
@@ -73,7 +80,7 @@ library DecayParameterLib {
      * @return The claimDecrease as uint256
      */
     function getClaimDecrease(DecayParameter self) internal pure returns (uint256) {
-        return DecayParameter.unwrap(self) & CLAIM_DECREASE_MASK;
+        return (DecayParameter.unwrap(self) & CLAIM_DECREASE_MASK) >> CLAIM_DECREASE_SHIFT;
     }
 
     /**
@@ -92,7 +99,7 @@ library DecayParameterLib {
 
         blockDuration = value >> BLOCK_DURATION_SHIFT;
         fillIncrease = (value & FILL_INCREASE_MASK) >> FILL_INCREASE_SHIFT;
-        claimDecrease = value & CLAIM_DECREASE_MASK;
+        claimDecrease = (value & CLAIM_DECREASE_MASK) >> CLAIM_DECREASE_SHIFT;
 
         return (blockDuration, fillIncrease, claimDecrease);
     }
