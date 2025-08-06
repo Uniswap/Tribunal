@@ -9,6 +9,10 @@ import {SafeTransferLib} from "the-compact/lib/solady/src/utils/SafeTransferLib.
 import {BlockNumberish} from "./BlockNumberish.sol";
 import {DecayParameterLib} from "./lib/DecayParameterLib.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
+import {ITheCompactClaims} from "the-compact/src/interfaces/ITheCompactClaims.sol";
+import {BatchClaim as CompactBatchClaim} from "the-compact/src/types/BatchClaims.sol";
+import {BatchClaimComponent, Component} from "the-compact/src/types/Components.sol";
+import {ITribunalCallback} from "./Interfaces/ITribunalCallback.sol";
 
 /**
  * @title Tribunal
@@ -84,6 +88,11 @@ contract Tribunal is BlockNumberish {
     bytes32 internal constant COMPACT_TYPEHASH_WITH_MANDATE =
         0xfd9cda0e5e31a3a3476cb5b57b07e2a4d6a12815506f69c880696448cd9897a5;
 
+    string constant WITNESS_TYPESTRING =
+        "uint256 chainId,address tribunal,address recipient,uint256 expires,address token,uint256 minimumAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] decayCurve,bytes32 salt";
+
+    ITheCompactClaims public immutable theCompact;
+
     // ======== Storage ========
 
     /// @notice Mapping of used claim hashes to claimants.
@@ -108,7 +117,9 @@ contract Tribunal is BlockNumberish {
 
     // ======== Constructor ========
 
-    constructor() {}
+    constructor(address theCompact_) {
+        theCompact = ITheCompactClaims(theCompact_);
+    }
 
     // ======== External Functions ========
 
@@ -124,12 +135,12 @@ contract Tribunal is BlockNumberish {
      * @notice Attempt to fill a cross-chain swap.
      * @param claim The claim parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param claimant The recipient of claimed tokens on the claim chain, combined with a lockTag indicating the fillers intent.
      * @return mandateHash The derived mandate hash.
      * @return fillAmount The amount of tokens to be filled.
      * @return claimAmounts The amount of tokens to be claimed.
      */
-    function fill(BatchClaim calldata claim, Mandate calldata mandate, address claimant)
+    function fill(BatchClaim calldata claim, Mandate calldata mandate, bytes32 claimant)
         external
         payable
         nonReentrant
@@ -161,7 +172,7 @@ contract Tribunal is BlockNumberish {
     function fill(
         BatchClaim calldata claim,
         Mandate calldata mandate,
-        address claimant,
+        bytes32 claimant,
         uint256 targetBlock,
         uint256 maximumBlocksAfterTarget
     )
@@ -220,7 +231,7 @@ contract Tribunal is BlockNumberish {
      * @param claimant The address of the claimant.
      * @return dispensation The suggested dispensation amount.
      */
-    function quote(BatchClaim calldata claim, Mandate calldata mandate, address claimant)
+    function quote(BatchClaim calldata claim, Mandate calldata mandate, bytes32 claimant)
         external
         view
         returns (uint256 dispensation)
@@ -383,14 +394,12 @@ contract Tribunal is BlockNumberish {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         Mandate calldata mandate,
-        address claimant,
+        bytes32 claimant,
         uint256 targetBlock,
         uint256 maximumBlocksAfterTarget
     ) internal returns (bytes32 mandateHash, uint256 fillAmount, uint256[] memory claimAmounts) {
         // Ensure that the mandate has not expired.
         mandate.expires.later();
-
-        claimAmounts = new uint256[](compact.commitments.length);
 
         uint256 errorBuffer;
         uint256 currentFillIncreaseBPS;
@@ -426,7 +435,7 @@ contract Tribunal is BlockNumberish {
         if (_dispositions[claimHash] != address(0)) {
             revert AlreadyClaimed();
         }
-        _dispositions[claimHash] = claimant;
+        _dispositions[claimHash] = address(uint160(uint256(claimant)));
 
         // Derive fill and claim amounts.
         (fillAmount, claimAmounts) = deriveAmounts(
@@ -438,18 +447,35 @@ contract Tribunal is BlockNumberish {
             mandate.scalingFactor
         );
 
-        // Handle native token withdrawals directly.
-        if (mandate.token == address(0)) {
-            mandate.recipient.safeTransferETH(fillAmount);
-        } else {
-            // NOTE: Settling fee-on-transfer tokens will result in fewer tokens
-            // being received by the recipient. Be sure to acommodate for this when
-            // providing the desired fill amount.
-            mandate.token.safeTransferFrom(msg.sender, mandate.recipient, fillAmount);
+        // Process single chain claims.
+        if (chainId == block.chainid) {
+            _processSingleChainClaim(
+                compact,
+                mandate,
+                sponsorSignature,
+                allocatorSignature,
+                mandateHash,
+                fillAmount,
+                claimant,
+                claimAmounts,
+                targetBlock,
+                maximumBlocksAfterTarget
+            );
+            return (mandateHash, fillAmount, claimAmounts);
         }
 
+        // Send the tokens to the recipient.
+        _processFill(mandate, fillAmount);
+
         // Emit the fill event.
-        emit Fill(compact.sponsor, claimant, claimHash, fillAmount, claimAmounts, targetBlock);
+        emit Fill(
+            compact.sponsor,
+            address(uint160(uint256(claimant))),
+            claimHash,
+            fillAmount,
+            claimAmounts,
+            targetBlock
+        );
 
         // Process the directive.
         _processDirective(
@@ -515,7 +541,7 @@ contract Tribunal is BlockNumberish {
                 sponsorSignature,
                 allocatorSignature,
                 mandateHash,
-                compact.sponsor, // claimant
+                bytes32(uint256(uint160(compact.sponsor))), // claimant
                 new uint256[](0), // claimAmounts
                 0, // targetBlock,
                 0 // maximumBlocksAfterTarget
@@ -545,7 +571,7 @@ contract Tribunal is BlockNumberish {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         Mandate calldata mandate,
-        address claimant
+        bytes32 claimant
     ) internal view returns (uint256 dispensation) {
         // Ensure that the mandate has not expired.
         mandate.expires.later();
@@ -581,6 +607,62 @@ contract Tribunal is BlockNumberish {
             _getBlockNumberish(),
             255
         );
+    }
+
+    function _processSingleChainClaim(
+        BatchCompact calldata compact,
+        Mandate calldata mandate,
+        bytes calldata sponsorSignature,
+        bytes calldata allocatorSignature,
+        bytes32 mandateHash,
+        uint256 fillAmount,
+        bytes32 claimant,
+        uint256[] memory claimAmounts,
+        uint256 targetBlock,
+        uint256 maximumBlocksAfterTarget
+    ) internal {
+        // Claim the tokens to the claimant.
+        CompactBatchClaim memory claim;
+        claim.allocatorData =
+            _createAllocatorData(targetBlock, maximumBlocksAfterTarget, allocatorSignature);
+        claim.sponsorSignature = sponsorSignature;
+        claim.sponsor = compact.sponsor;
+        claim.nonce = compact.nonce;
+        claim.expires = compact.expires;
+        claim.witness = mandateHash;
+        claim.witnessTypestring = WITNESS_TYPESTRING;
+        claim.claims = new BatchClaimComponent[](claimAmounts.length);
+        for (uint256 i = 0; i < claimAmounts.length; i++) {
+            BatchClaimComponent memory component;
+            component.id = uint256(bytes32(compact.commitments[i].lockTag))
+                | uint256(uint160(compact.commitments[i].token));
+            component.allocatedAmount = compact.commitments[i].amount;
+            component.portions = new Component[](1);
+            component.portions[0].claimant = uint256(claimant);
+            component.portions[0].amount = claimAmounts[i];
+            claim.claims[i] = component;
+        }
+        theCompact.batchClaim(claim);
+
+        // Do a callback to the sender
+        ITribunalCallback(msg.sender).tribunalCallback(
+            compact.commitments, claimAmounts, mandate.token, mandate.minimumAmount, fillAmount
+        );
+
+        // Send the tokens to the recipient
+        _processFill(mandate, fillAmount);
+    }
+
+    function _processFill(Mandate calldata mandate, uint256 fillAmount) internal {
+        // Handle native token withdrawals directly.
+        if (mandate.token == address(0)) {
+            mandate.recipient.safeTransferETH(fillAmount);
+        } else {
+            // NOTE: Settling fee-on-transfer tokens will result in fewer tokens
+            // being received by the recipient. Be sure to acommodate for this when
+            // providing the desired fill amount.
+            mandate.token.safeTransferFrom(msg.sender, mandate.recipient, fillAmount);
+        }
     }
 
     function _deriveCommitmentsHash(Lock[] calldata commitments) internal pure returns (bytes32) {
@@ -637,7 +719,7 @@ contract Tribunal is BlockNumberish {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         bytes32 mandateHash,
-        address claimant,
+        bytes32 claimant,
         uint256[] memory claimAmounts,
         uint256 targetBlock,
         uint256 maximumBlocksAfterTarget
@@ -664,7 +746,7 @@ contract Tribunal is BlockNumberish {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         bytes32 mandateHash,
-        address claimant,
+        bytes32 claimant,
         uint256[] memory claimAmounts,
         uint256 targetBlock,
         uint256 maximumBlocksAfterTarget
@@ -681,5 +763,13 @@ contract Tribunal is BlockNumberish {
 
         // NOTE: Override & implement quote logic.
         return msg.sender.balance / 1000;
+    }
+
+    function _createAllocatorData(
+        uint256 targetBlock,
+        uint256 maximumBlocksAfterTarget,
+        bytes calldata allocatorSignature
+    ) internal pure virtual returns (bytes memory) {
+        return abi.encode(targetBlock, maximumBlocksAfterTarget, allocatorSignature);
     }
 }

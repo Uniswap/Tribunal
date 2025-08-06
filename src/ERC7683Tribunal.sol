@@ -11,7 +11,7 @@ import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
 contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     // ======== Constructor ========
-    constructor() {}
+    constructor(address compact) Tribunal(compact) {}
 
     // ======== External Functions ========
     /**
@@ -32,7 +32,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             Mandate calldata mandate,
             uint256 targetBlock,
             uint256 maximumBlocksAfterTarget,
-            address claimant
+            bytes32 claimant
         ) = _parseCalldata(originData, fillerData);
 
         _fill(
@@ -67,7 +67,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             Mandate calldata mandate,
             ,
             ,
-            address claimant
+            bytes32 claimant
         ) = _parseCalldata(originData, fillerData);
 
         return _quote(chainId, compact, sponsorSignature, allocatorSignature, mandate, claimant);
@@ -97,7 +97,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             Mandate calldata mandate,
             uint256 targetBlock,
             uint256 maximumBlocksAfterTarget,
-            address claimant
+            bytes32 claimant
         )
     {
         /*
