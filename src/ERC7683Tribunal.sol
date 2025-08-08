@@ -6,6 +6,7 @@ import {LibBytes} from "solady/utils/LibBytes.sol";
 import {IDestinationSettler} from "./Interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
+import {Mandate} from "./types/TribunalStructs.sol";
 
 /// @title ERC7683Tribunal
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
