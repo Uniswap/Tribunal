@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {EfficiencyLib} from "the-compact/src/lib/EfficiencyLib.sol";
+
 /**
  * @title PriceCurveLib
  * @dev Custom type for price curve parameters with bit-packed values
@@ -15,6 +18,8 @@ type PriceCurveElement is uint256;
  */
 library PriceCurveLib {
     using PriceCurveLib for uint256;
+    using FixedPointMathLib for uint256;
+    using EfficiencyLib for bool;
 
     error PriceCurveBlocksExceeded();
     error InvalidPriceCurveParameters();
@@ -80,6 +85,33 @@ library PriceCurveLib {
         scalingFactor = (value & SCALING_FACTOR_MASK);
 
         return (blockDuration, scalingFactor);
+    }
+
+    function applySupplementalPriceCurve(
+        uint256[] calldata parameters,
+        uint256[] calldata supplementalParameters
+    ) internal pure returns (uint256[] memory) {
+        uint256[] memory combinedParameters = new uint256[](parameters.length);
+        uint256 parameterIndex = 0;
+        uint256 errorBuffer = 0;
+        uint256 applicationRange = parameters.length.min(supplementalParameters.length);
+        for (uint256 i = 0; i < applicationRange; ++i) {
+            (uint256 duration, uint256 scalingFactor) =
+                getComponents(PriceCurveElement.wrap(parameters[i]));
+            uint256 supplementalScalingFactor = supplementalParameters[i];
+
+            errorBuffer |=
+                scalingFactor.sharesScalingDirection(supplementalScalingFactor).asUint256();
+
+            uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
+
+            combinedParameters[i] =
+                PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
+        }
+
+        for (uint256 i = applicationRange; i < parameters.length; ++i) {
+            combinedParameters[i] = parameters[i];
+        }
     }
 
     /**
