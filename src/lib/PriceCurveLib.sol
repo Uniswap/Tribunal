@@ -15,6 +15,7 @@ type PriceCurveElement is uint256;
  */
 library PriceCurveLib {
     using PriceCurveLib for uint256;
+
     error PriceCurveBlocksExceeded();
     error InvalidPriceCurveParameters();
 
@@ -33,6 +34,7 @@ library PriceCurveLib {
      * @param scalingFactor Additional scaling factor to apply to fill increase or claim decrease
      * @return The packed PriceCurveElement
      */
+
     function create(uint16 blockDuration, uint240 scalingFactor)
         internal
         pure
@@ -277,10 +279,11 @@ library PriceCurveLib {
         assembly {
             let threshold := 1000000000000000000
 
-            result := or(
-                or(eq(a, threshold), eq(b, threshold)), // either value is 1e18
-                eq(gt(a, threshold), gt(b, threshold)) // both values are either greater or less than 1e18
-            )
+            result :=
+                or(
+                    or(eq(a, threshold), eq(b, threshold)), // either value is 1e18
+                    eq(gt(a, threshold), gt(b, threshold)) // both values are either greater or less than 1e18
+                )
         }
     }
 }

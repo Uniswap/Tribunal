@@ -26,13 +26,19 @@ pragma solidity ^0.8.27;
 //   9b) sponsor signs a new compact to perform a cross-chain swap back to the original source chain (basically return to step 1 with target and source swapped) — note that this could also be part of the originally registered target chain compact and performed automatically
 //   9c) sponsor manually withdraws tokens on target chain
 
-struct BatchCompact {
+struct Mandate_BatchCompact {
     address arbiter;
     address sponsor;
-    uint256 expires;
     uint256 nonce;
-    Lock[] commitments;
-    Mandate mandate;
+    uint256 expires;
+    Mandate_Lock[] commitments;
+    bytes32 mandateHash; // NOTE: this is `Mandate mandate` in the actual EIP-712 typestring; here it is instead provided as an argument on fills
+}
+
+struct Mandate_Lock {
+    bytes12 lockTag; // A tag representing the allocator, reset period, and scope.
+    address token; // The locked token, or address(0) for native tokens.
+    uint256 amount; // The maximum committed amount of tokens.
 }
 
 // Full mandate originally signed by swapper on source chain.
@@ -43,23 +49,23 @@ struct Mandate {
 
 struct Mandate_Fill {
     uint256 chainId; // same-chain if value matches chainId()
-    address tribunal; // 
-    uint256 expires; // Source chain action expiration timestamp.
+    address tribunal; //
+    uint256 expires;
+    // Source chain action expiration timestamp.
     address fillToken; // Intermediate fill token (address(0) for native, same address for no action).
     uint256 minimumFillAmount; // Minimum fill amount.
     uint256 baselinePriorityFee; // Base fee threshold where scaling kicks in.
     uint256 scalingFactor; // Fee scaling multiplier (1e18 baseline).
     uint256[] priceCurve; // Block durations and uint240 additional scaling factors per each duration.
     address recipient; // Recipient of the tokens — address(0) or tribunal indicate that funds will be pulled by the directive.
-    Mandate_Directive[] directive; // Array of length 0 or 1
+    Mandate_RecipientCallback[] recipientCallback; // Array of length 0 or 1
 }
 
-struct Mandate_Directive {
+// If a callback is specified, tribunal will follow up with a call to the recipient with fill details (including realized fill amount), a new compact and hash of an accompanying mandate, a target chainId, and context
+struct Mandate_RecipientCallback {
     uint256 chainId;
-    address director;
-    bytes callData;
-    uint256 offsetToAmountInCalldata;
-    BatchCompact compact;
+    Mandate_BatchCompact compact;
+    bytes context;
 }
 
 // Arguments signed for by adjuster.

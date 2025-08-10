@@ -7,13 +7,16 @@ pragma solidity ^0.8.27;
  */
 library DomainLib {
     /// @dev `keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)")`.
-    bytes32 internal constant _DOMAIN_TYPEHASH = 0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
+    bytes32 internal constant _DOMAIN_TYPEHASH =
+        0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f;
 
     /// @dev `keccak256(bytes("Tribunal"))`.
-    bytes32 internal constant _NAME_HASH = 0x0e2a7404936dd29a4a3b49dad6c2f86f8e2da9cf7cf60ef9518bb049b4cb9b44;
+    bytes32 internal constant _NAME_HASH =
+        0x0e2a7404936dd29a4a3b49dad6c2f86f8e2da9cf7cf60ef9518bb049b4cb9b44;
 
     /// @dev `keccak256("1")`.
-    bytes32 internal constant _VERSION_HASH = 0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
+    bytes32 internal constant _VERSION_HASH =
+        0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6;
 
     /**
      * @notice Internal view function that returns the current domain separator, deriving a new one
@@ -53,11 +56,7 @@ library DomainLib {
      * @notice Internal view function that derives a domain separator for the current chain ID.
      * @return domainSeparator The current domain separator.
      */
-    function toCurrentDomainSeparator()
-        internal
-        view
-        returns (bytes32 domainSeparator)
-    {
+    function toCurrentDomainSeparator() internal view returns (bytes32 domainSeparator) {
         assembly ("memory-safe") {
             // Retrieve the free memory pointer.
             let m := mload(0x40)
@@ -81,7 +80,11 @@ library DomainLib {
      * @param domainSeparator The domain separator to combine with the message hash.
      * @return domainHash     The domain-specific hash.
      */
-    function withDomain(bytes32 messageHash, bytes32 domainSeparator) internal pure returns (bytes32 domainHash) {
+    function withDomain(bytes32 messageHash, bytes32 domainSeparator)
+        internal
+        pure
+        returns (bytes32 domainHash)
+    {
         assembly ("memory-safe") {
             // Retrieve and cache the free memory pointer.
             let m := mload(0x40)
