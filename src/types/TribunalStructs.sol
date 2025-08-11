@@ -70,6 +70,7 @@ struct Mandate_RecipientCallback {
 
 // Arguments signed for by adjuster.
 struct Adjustment {
+    // bytes32 claimHash included in EIP-712 payload but not provided as an argument.
     uint256 fillStageIndex;
     uint256 targetBlock;
     uint256[] supplementalPriceCurve; // Additional scaling factor specified duration on price curve.
