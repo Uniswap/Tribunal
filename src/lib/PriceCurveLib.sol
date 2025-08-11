@@ -120,7 +120,7 @@ library PriceCurveLib {
      * @param blocksPassed Number of blocks that have already passed
      * @return currentScalingFactor The current scaling factor value
      */
-    function getCalculatedValues(uint256[] calldata parameters, uint256 blocksPassed)
+    function getCalculatedValues(uint256[] memory parameters, uint256 blocksPassed)
         internal
         pure
         returns (uint256 currentScalingFactor)

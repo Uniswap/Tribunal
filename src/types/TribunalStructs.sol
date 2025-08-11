@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
+import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+
 // Overview of the sequence of steps:
 //  1) sponsor deposits and registers a compact on the source chain assigning an adjuster, a cross-chain fill, and a source-chain fallback action that will trigger a deposit and registration of a target-chain compact. Allocator ensures that deposited tokens are allocated.
 //  2) adjuster cosigns an adjustment for the cross-chain fill (if they do not cosign, sponsor signs a new compact or withdraws)
@@ -26,32 +28,16 @@ pragma solidity ^0.8.27;
 //   9b) sponsor signs a new compact to perform a cross-chain swap back to the original source chain (basically return to step 1 with target and source swapped) — note that this could also be part of the originally registered target chain compact and performed automatically
 //   9c) sponsor manually withdraws tokens on target chain
 
-struct Mandate_BatchCompact {
-    address arbiter;
-    address sponsor;
-    uint256 nonce;
-    uint256 expires;
-    Mandate_Lock[] commitments;
-    bytes32 mandateHash; // NOTE: this is `Mandate mandate` in the actual EIP-712 typestring; here it is instead provided as an argument on fills
-}
-
-struct Mandate_Lock {
-    bytes12 lockTag; // A tag representing the allocator, reset period, and scope.
-    address token; // The locked token, or address(0) for native tokens.
-    uint256 amount; // The maximum committed amount of tokens.
-}
-
-// Full mandate originally signed by swapper on source chain.
+// Parent mandate signed by the sponsor on source chain. Note that the EIP-712 payload differs slightly from the structs declared here (mainly around utilizing full mandates rather than mandate hashes).
 struct Mandate {
     address adjuster;
     Mandate_Fill[] fills; // Arbitrary-length array
 }
 
 struct Mandate_Fill {
-    uint256 chainId; // same-chain if value matches chainId()
-    address tribunal; //
-    uint256 expires;
-    // Source chain action expiration timestamp.
+    uint256 chainId; // Same-chain if value matches chainId(), otherwise cross-chain
+    address tribunal; // Contract where the fill is performed.
+    uint256 expires; // Fill expiration timestamp.
     address fillToken; // Intermediate fill token (address(0) for native, same address for no action).
     uint256 minimumFillAmount; // Minimum fill amount.
     uint256 baselinePriorityFee; // Base fee threshold where scaling kicks in.
@@ -59,12 +45,15 @@ struct Mandate_Fill {
     uint256[] priceCurve; // Block durations and uint240 additional scaling factors per each duration.
     address recipient; // Recipient of the tokens — address(0) or tribunal indicate that funds will be pulled by the directive.
     Mandate_RecipientCallback[] recipientCallback; // Array of length 0 or 1
+    bytes32 salt;
 }
 
 // If a callback is specified, tribunal will follow up with a call to the recipient with fill details (including realized fill amount), a new compact and hash of an accompanying mandate, a target chainId, and context
+// Note that this does not directly map to the EIP-712 payload (which contains a Mandate_BatchCompact containing the full Mandate mandate rather than BatchCompact + mandateHash)
 struct Mandate_RecipientCallback {
     uint256 chainId;
-    Mandate_BatchCompact compact;
+    BatchCompact compact;
+    bytes32 mandateHash;
     bytes context;
 }
 
@@ -76,75 +65,3 @@ struct Adjustment {
     uint256[] supplementalPriceCurve; // Additional scaling factor specified duration on price curve.
     bytes32 validityConditions; // Optional value consisting of a number of blocks past the target and a exclusive filler address.
 }
-
-// Arguments provided by cross chain filler.
-// struct CrossChainFill {
-//   Compact compact;
-//   Mandate_CrossChainFill mandate;
-//   address adjuster;
-//   Adjustment adjustment;
-//   bytes adjustmentAuthorization;
-//   bytes32 sourceChainActionHash;
-//   address claimant;
-// }
-
-struct Mandate_AdditionalCompact {
-    uint256 chainId; // chain ID on the target chain.
-    BatchCompact compact;
-}
-
-// Arguments signed by swapper for source chain action.
-struct Mandate_SingleChainFill {
-    Mandate_Auction auction;
-    Mandate_AdditionalCompact[] targetChainCompacts;
-    bytes32 salt; // Replay protection parameter.
-}
-
-// Arguments provided by source chain filler.
-// struct SourceChainAction {
-//   Compact compact;
-//   Mandate_SourceChainAction mandate;
-//   address adjuster;
-//   Adjustment adjustment;
-//   bytes adjustmentAuthorization;
-//   bytes32 crossChainFillHash;
-//   address claimant;
-// }
-
-// Arguments used to build the target chain compact.
-struct TargetChainCompact {
-    // address arbiter; // Tribunal on the target chain.
-    address sponsor; // The account to register the tokens to.
-    uint256 nonce; // can be set automatically by the allocator by passing a value of 0.
-    uint256 expires; // The time at which the target chain claim expires.
-    uint256 id; // The token ID of the ERC6909 token; must match the bridged token.
-    // uint256 amount set automatically by tribunal based on post-bridge balance.
-    TargetChainMandate targetChainMandate; // mandate for target chain.
-}
-
-// Mandate originally signed by swapper for target chain compact. Note that this struct will actually be named "Mandate" in the registered compact.
-struct TargetChainMandate {
-    address adjuster;
-    Mandate_TargetChainAction targetChainAction;
-}
-
-// Arguments signed by swapper for target chain action.
-struct Mandate_TargetChainAction {
-    address recipient; // Recipient of filled tokens.
-    address fillToken; // Fill token (address(0) for native).
-    uint256 minimumFillAmount; // Minimum fill amount.
-    uint256 baselinePriorityFee; // Base fee threshold where scaling kicks in.
-    uint256 scalingFactor; // Fee scaling multiplier (1e18 baseline).
-    uint256[] priceCurve; // Block durations and uint240 additional scaling factors per each duration.
-    bytes32 salt; // Replay protection parameter.
-}
-
-// Arguments provided by target chain filler.
-// struct TargetChainAction {
-//   Compact compact; // based on TargetChainCompact data.
-//   Mandate_TargetChainAction mandate;
-//   address adjuster;
-//   Adjustment adjustment;
-//   bytes adjustmentAuthorization;
-//   address claimant;
-// }
