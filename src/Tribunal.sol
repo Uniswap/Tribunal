@@ -632,40 +632,17 @@ contract Tribunal is BlockNumberish {
         // Derive mandate hash.
         mandateHash = _deriveMandateHash(mandate, adjuster, fillIndex, fillHashes);
 
-        if (block.chainid == mandate.chainId) {
-            claimHash = _singleChainFill(
-                compact,
-                mandate,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                fillAmount,
-                claimant,
-                claimAmounts,
-                adjustment
-            );
-        } else {
-            // Derive and check claim hash.
-            claimHash = deriveClaimHash(compact, mandateHash);
-            if (_dispositions[claimHash] != address(0)) {
-                revert AlreadyClaimed();
-            }
-
-            // Set the disposition for the given claim hash.
-            _dispositions[claimHash] = address(uint160(uint256(claimant)));
-
-            // Process the directive.
-            _processDirective(
-                chainId,
-                compact,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                claimant,
-                claimAmounts,
-                adjustment.targetBlock
-            );
-        }
+        claimHash = _processClaimOrDisposition(
+            compact,
+            mandate,
+            sponsorSignature,
+            allocatorSignature,
+            mandateHash,
+            fillAmount,
+            claimant,
+            claimAmounts,
+            adjustment
+        );
 
         if (
             !adjuster.isValidSignatureNow(
@@ -696,6 +673,53 @@ contract Tribunal is BlockNumberish {
         uint256 remaining = address(this).balance;
         if (remaining > 0) {
             msg.sender.safeTransferETH(remaining);
+        }
+    }
+
+    function _processClaimOrDisposition(
+        BatchCompact calldata compact,
+        Mandate_Fill calldata mandate,
+        bytes calldata sponsorSignature,
+        bytes calldata allocatorSignature,
+        bytes32 mandateHash,
+        uint256 fillAmount,
+        bytes32 claimant,
+        uint256[] memory claimAmounts,
+        Adjustment calldata adjustment
+    ) internal returns (bytes32 claimHash) {
+        if (block.chainid == mandate.chainId) {
+            claimHash = _singleChainFill(
+                compact,
+                mandate,
+                sponsorSignature,
+                allocatorSignature,
+                mandateHash,
+                fillAmount,
+                claimant,
+                claimAmounts,
+                adjustment
+            );
+        } else {
+            // Derive and check claim hash.
+            claimHash = deriveClaimHash(compact, mandateHash);
+            if (_dispositions[claimHash] != address(0)) {
+                revert AlreadyClaimed();
+            }
+
+            // Set the disposition for the given claim hash.
+            _dispositions[claimHash] = address(uint160(uint256(claimant)));
+
+            // Process the directive.
+            _processDirective(
+                mandate.chainId,
+                compact,
+                sponsorSignature,
+                allocatorSignature,
+                mandateHash,
+                claimant,
+                claimAmounts,
+                adjustment.targetBlock
+            );
         }
     }
 
@@ -737,25 +761,27 @@ contract Tribunal is BlockNumberish {
     ) internal returns (bytes32 claimHash) {
         // Claim the tokens to the claimant.
         CompactBatchClaim memory claim;
-        claim.allocatorData = allocatorSignature;
-        claim.sponsorSignature = sponsorSignature;
-        claim.sponsor = compact.sponsor;
-        claim.nonce = compact.nonce;
-        claim.expires = compact.expires;
-        claim.witness = mandateHash;
-        claim.witnessTypestring = WITNESS_TYPESTRING;
-        claim.claims = new BatchClaimComponent[](claimAmounts.length);
-        for (uint256 i = 0; i < claimAmounts.length; i++) {
-            BatchClaimComponent memory component;
-            component.id = uint256(bytes32(compact.commitments[i].lockTag))
-                | uint256(uint160(compact.commitments[i].token));
-            component.allocatedAmount = compact.commitments[i].amount;
-            component.portions = new Component[](1);
-            component.portions[0].claimant = uint256(claimant);
-            component.portions[0].amount = claimAmounts[i];
-            claim.claims[i] = component;
+        BatchClaimComponent memory component;
+        {
+            claim.allocatorData = allocatorSignature;
+            claim.sponsorSignature = sponsorSignature;
+            claim.sponsor = compact.sponsor;
+            claim.nonce = compact.nonce;
+            claim.expires = compact.expires;
+            claim.witness = mandateHash;
+            claim.witnessTypestring = WITNESS_TYPESTRING;
+            claim.claims = new BatchClaimComponent[](claimAmounts.length);
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                component.id = uint256(bytes32(compact.commitments[i].lockTag))
+                    | uint256(uint160(compact.commitments[i].token));
+                component.allocatedAmount = compact.commitments[i].amount;
+                component.portions = new Component[](1);
+                component.portions[0].claimant = uint256(claimant);
+                component.portions[0].amount = claimAmounts[i];
+                claim.claims[i] = component;
+            }
+            claimHash = theCompact.batchClaim(claim);
         }
-        claimHash = theCompact.batchClaim(claim);
 
         // Do a callback to the sender
         ITribunalCallback(msg.sender).tribunalCallback(
