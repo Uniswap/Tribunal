@@ -2,7 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Tribunal} from "../../src/Tribunal.sol";
-import {Mandate, Fill, RecipientCallback} from "../../src/types/TribunalStructs.sol";
+import {Mandate, Fill, RecipientCallback, Adjustment} from "../../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 contract ReentrantReceiver {
@@ -26,23 +26,53 @@ contract ReentrantReceiver {
             sponsorSignature: new bytes(0),
             allocatorSignature: new bytes(0)
         });
-        _mandate = Fill({
-            recipient: address(this),
+        _mandate = Mandate({adjuster: address(this), fills: new Fill[](1)});
+        _mandate.fills[0] = Fill({
+            chainId: block.chainid,
+            tribunal: address(_TRIBUNAL),
             expires: type(uint32).max,
             fillToken: address(0),
             minimumFillAmount: 0,
             baselinePriorityFee: 0,
             scalingFactor: 1e18,
             priceCurve: new uint256[](0),
-            recipientCallback: new RecipientCallback[],
+            recipient: address(this),
+            recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
     }
 
     receive() external payable {
-        uint256 quote = _TRIBUNAL.quote(_claim, _mandate, address(this));
+        Adjustment memory adjustment = Adjustment({
+            fillIndex: 0,
+            targetBlock: block.number,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = _TRIBUNAL.deriveFillHash(_mandate.fills[0]);
+
+        uint256 quote = _TRIBUNAL.quote(
+            _claim,
+            _mandate.fills[0],
+            address(this),
+            adjustment,
+            block.number,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
         uint256 balanceBefore = address(this).balance;
-        try _TRIBUNAL.fill{value: quote}(_claim, _mandate, address(this)) {
+        try _TRIBUNAL.fill{value: quote}(
+            _claim,
+            _mandate.fills[0],
+            address(this),
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        ) {
             if (address(this).balance < balanceBefore) {
                 revert NoProfit(balanceBefore, address(this).balance);
             }
@@ -50,11 +80,11 @@ contract ReentrantReceiver {
         } catch {}
     }
 
-    function getClaim() public view returns (Tribunal.BatchClaim memory) {
-        return _claim;
+    function getMandate() public view returns (Fill memory) {
+        return _mandate.fills[0];
     }
 
-    function getMandate() public view returns (Mandate memory) {
-        return _mandate;
+    function getClaim() public view returns (Tribunal.BatchClaim memory) {
+        return _claim;
     }
 }
