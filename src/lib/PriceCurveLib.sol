@@ -90,9 +90,8 @@ library PriceCurveLib {
     function applySupplementalPriceCurve(
         uint256[] calldata parameters,
         uint256[] calldata supplementalParameters
-    ) internal pure returns (uint256[] memory) {
-        uint256[] memory combinedParameters = new uint256[](parameters.length);
-        uint256 parameterIndex = 0;
+    ) internal pure returns (uint256[] memory combinedParameters) {
+        combinedParameters = new uint256[](parameters.length);
         uint256 errorBuffer = 0;
         uint256 applicationRange = parameters.length.min(supplementalParameters.length);
         for (uint256 i = 0; i < applicationRange; ++i) {

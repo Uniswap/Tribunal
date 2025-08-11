@@ -283,7 +283,6 @@ contract Tribunal is BlockNumberish {
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
      * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillIndex The index of the target fill in the fills array.
      * @param fillHashes An array of the hashes of each fill.
@@ -295,7 +294,6 @@ contract Tribunal is BlockNumberish {
         Mandate_Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         uint256 fillBlock,
         uint256 fillIndex,
         bytes32[] calldata fillHashes,
@@ -422,7 +420,7 @@ contract Tribunal is BlockNumberish {
      */
     function deriveRecipientCallbackHash(Mandate_RecipientCallback[] calldata recipientCallback)
         public
-        view
+        pure
         returns (bytes32)
     {
         if (recipientCallback.length == 0) {
@@ -514,7 +512,6 @@ contract Tribunal is BlockNumberish {
         uint256 baselinePriorityFee,
         uint256 scalingFactor
     ) public view returns (uint256 fillAmount, uint256[] memory claimAmounts) {
-        uint256 errorBuffer;
         uint256 currentScalingFactor = 1e18;
         if (targetBlock != 0) {
             if (targetBlock > fillBlock) {
@@ -633,6 +630,7 @@ contract Tribunal is BlockNumberish {
         mandateHash = _deriveMandateHash(mandate, adjuster, fillIndex, fillHashes);
 
         claimHash = _processClaimOrDisposition(
+            chainId,
             compact,
             mandate,
             sponsorSignature,
@@ -677,6 +675,7 @@ contract Tribunal is BlockNumberish {
     }
 
     function _processClaimOrDisposition(
+        uint256 chainId,
         BatchCompact calldata compact,
         Mandate_Fill calldata mandate,
         bytes calldata sponsorSignature,
@@ -687,7 +686,7 @@ contract Tribunal is BlockNumberish {
         uint256[] memory claimAmounts,
         Adjustment calldata adjustment
     ) internal returns (bytes32 claimHash) {
-        if (block.chainid == mandate.chainId) {
+        if (block.chainid == chainId && block.chainid == mandate.chainId) {
             claimHash = _singleChainFill(
                 compact,
                 mandate,
@@ -696,8 +695,7 @@ contract Tribunal is BlockNumberish {
                 mandateHash,
                 fillAmount,
                 claimant,
-                claimAmounts,
-                adjustment
+                claimAmounts
             );
         } else {
             // Derive and check claim hash.
@@ -756,12 +754,12 @@ contract Tribunal is BlockNumberish {
         bytes32 mandateHash,
         uint256 fillAmount,
         bytes32 claimant,
-        uint256[] memory claimAmounts,
-        Adjustment calldata adjustment
+        uint256[] memory claimAmounts
     ) internal returns (bytes32 claimHash) {
         // Claim the tokens to the claimant.
         CompactBatchClaim memory claim;
         BatchClaimComponent memory component;
+
         {
             claim.allocatorData = allocatorSignature;
             claim.sponsorSignature = sponsorSignature;
