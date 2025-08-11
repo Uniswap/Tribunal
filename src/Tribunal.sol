@@ -276,6 +276,14 @@ contract Tribunal is BlockNumberish {
             idsAndAmounts[i][0] = uint256(bytes32(compact.commitments[i].lockTag))
                 | uint256(uint160(compact.commitments[i].token));
             idsAndAmounts[i][1] = compact.commitments[i].token.balanceOf(address(this));
+            if (
+                _checkCompactAllowance(compact.commitments[i].token, address(this))
+                    < idsAndAmounts[i][1]
+            ) {
+                SafeTransferLib.safeApproveWithRetry(
+                    compact.commitments[i].token, address(theCompact), type(uint256).max
+                );
+            }
         }
 
         if (compact.nonce == 0) {
@@ -295,7 +303,9 @@ contract Tribunal is BlockNumberish {
             );
 
             // deposit and register the tokens
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor(
+            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                value: address(this).balance
+            }(
                 compact.sponsor,
                 idsAndAmounts,
                 compact.arbiter,
@@ -317,7 +327,9 @@ contract Tribunal is BlockNumberish {
             );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor(
+            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                value: address(this).balance
+            }(
                 compact.sponsor,
                 idsAndAmounts,
                 compact.arbiter,
@@ -1005,6 +1017,28 @@ contract Tribunal is BlockNumberish {
             claimAmounts,
             fillBlock
         );
+    }
+
+    function _checkCompactAllowance(address token, address owner)
+        internal
+        view
+        returns (uint256 amount)
+    {
+        address compact = address(theCompact);
+        assembly ("memory-safe") {
+            mstore(0x14, owner) // Store the `owner` argument.
+            mstore(0x34, compact)
+            mstore(0x00, 0xdd62ed3e000000000000000000000000) // `allowance(address,address)`.
+            amount :=
+                mul( // The arguments of `mul` are evaluated from right to left.
+                    mload(0x20),
+                    and( // The arguments of `and` are evaluated from right to left.
+                        gt(returndatasize(), 0x1f), // At least 32 bytes returned.
+                        staticcall(gas(), token, 0x10, 0x44, 0x20, 0x20)
+                    )
+                )
+            mstore(0x34, 0)
+        }
     }
 
     /**
