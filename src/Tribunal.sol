@@ -61,6 +61,8 @@ contract Tribunal is BlockNumberish {
         uint256 targetBlock
     );
 
+    event Cancel(address indexed sponsor, bytes32 claimHash);
+
     // ======== Custom Errors ========
     error InvalidGasPrice();
     error AlreadyClaimed();
@@ -773,8 +775,7 @@ contract Tribunal is BlockNumberish {
         uint256 fillAmount,
         bytes32 claimant,
         uint256[] memory claimAmounts,
-        Adjustment calldata adjustment,
-        uint256 targetBlock
+        Adjustment calldata adjustment
     ) internal returns (bytes32 claimHash) {
         if (block.chainid == chainId && block.chainid == mandate.chainId) {
             claimHash = _singleChainFill(
@@ -795,7 +796,7 @@ contract Tribunal is BlockNumberish {
                 claimHash,
                 fillAmount,
                 claimAmounts,
-                targetBlock
+                adjustment.targetBlock
             );
         } else {
             // Derive and check claim hash.
@@ -827,7 +828,7 @@ contract Tribunal is BlockNumberish {
                 claimHash,
                 fillAmount,
                 claimAmounts,
-                targetBlock
+                adjustment.targetBlock
             );
         }
     }
@@ -937,15 +938,8 @@ contract Tribunal is BlockNumberish {
         }
         _dispositions[claimHash] = msg.sender;
 
-        // Emit the fill event even when cancelled.
-        emit Fill(
-            compact.sponsor,
-            compact.sponsor, /*claimant*/
-            claimHash,
-            0, /*fillAmounts*/
-            new uint256[](0), /*claimAmounts*/
-            0 /*targetBlock*/
-        );
+        // Emit the cancel event.
+        emit Cancel(compact.sponsor, claimHash);
 
         if (directive) {
             // Process the directive.
