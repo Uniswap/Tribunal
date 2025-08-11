@@ -24,7 +24,6 @@ import {
 } from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
 import {IRecipientCallback} from "./interfaces/IRecipientCallback.sol";
-import {ERC20} from "solady/tokens/ERC20.sol";
 
 /**
  * @title Tribunal
@@ -257,8 +256,7 @@ contract Tribunal is BlockNumberish {
             }
             for (; index < compact.commitments.length; index++) {
                 // Handle ERC20 tokens
-                uint256 balance = ERC20(compact.commitments[index].token).balanceOf(address(this));
-                compact.commitments[index].token.safeTransfer(claimant, balance);
+                compact.commitments[index].token.safeTransferAll(claimant);
             }
             return bytes32(0);
         }
@@ -277,7 +275,7 @@ contract Tribunal is BlockNumberish {
             // Handle ERC20 tokens
             idsAndAmounts[i][0] = uint256(bytes32(compact.commitments[i].lockTag))
                 | uint256(uint160(compact.commitments[i].token));
-            idsAndAmounts[i][1] = ERC20(compact.commitments[i].token).balanceOf(address(this));
+            idsAndAmounts[i][1] = compact.commitments[i].token.balanceOf(address(this));
         }
 
         if (compact.nonce == 0) {
