@@ -108,6 +108,10 @@ library PriceCurveLib {
                 PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
         }
 
+        if (errorBuffer != 0) {
+            revert InvalidPriceCurveParameters();
+        }
+
         for (uint256 i = applicationRange; i < parameters.length; ++i) {
             combinedParameters[i] = parameters[i];
         }
@@ -198,7 +202,7 @@ library PriceCurveLib {
                     }
 
                     // Use the provided interpolation function
-                    endScalingFactor = _locateCurrentAmount(
+                    currentScalingFactor = _locateCurrentAmount(
                         scalingFactor,
                         endScalingFactor,
                         blocksCounted,

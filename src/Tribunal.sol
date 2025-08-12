@@ -619,18 +619,27 @@ contract Tribunal is BlockNumberish {
 
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
-        if (scalingFactor > 1e18) {
-            // For exact-in, increase fill amount.
+        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor
+        bool useExactIn =
+            (scalingFactor > 1e18).or(scalingFactor == 1e18 && currentScalingFactor >= 1e18);
+
+        if (useExactIn) {
+            // For exact-in, increase fill amount and use maximum claim amounts.
             scalingMultiplier =
                 currentScalingFactor + ((scalingFactor - 1e18) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount.mulWadUp(scalingMultiplier);
+            // Copy maximum claim amounts unchanged
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
         } else {
             // For exact-out, decrease claim amount.
             scalingMultiplier =
                 currentScalingFactor - ((1e18 - scalingFactor) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount;
+            // Apply scaling to maximum claim amounts
             for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = claimAmounts[i].mulWad(scalingMultiplier);
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
             }
         }
 

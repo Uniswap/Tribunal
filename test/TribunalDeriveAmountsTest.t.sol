@@ -202,8 +202,8 @@ contract TribunalDeriveAmountsTest is Test {
         uint256 fillBlock = targetBlock + 5;
 
         uint256[] memory priceCurve = new uint256[](2);
-        priceCurve[0] = (3 << 240) | 1.2e18;
-        priceCurve[1] = (10 << 240) | 1.5e18;
+        priceCurve[0] = (3 << 240) | uint256(8e17); // 0.8 * 10^18 (scaling down)
+        priceCurve[1] = (10 << 240) | uint256(6e17); // 0.6 * 10^18 (scaling down more)
 
         (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
             maximumClaimAmounts,
@@ -215,10 +215,17 @@ contract TribunalDeriveAmountsTest is Test {
             scalingFactor
         );
 
-        uint256 expectedScaling = 1.2e18;
-        uint256 expectedFillAmount = minimumFillAmount.mulWadUp(expectedScaling);
-        assertEq(fillAmount, expectedFillAmount);
-        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
+        // With exact-out mode and price curve scaling down
+        assertEq(fillAmount, minimumFillAmount); // Fill amount stays the same
+
+        // Calculate expected claim amount based on interpolation at block 5
+        // We're 5 blocks in, with segment ending at block 3+10=13
+        // So we're 5-3=2 blocks into a 10-block segment
+        // Interpolating from 0.6 to 0 (last segment ends at 0)
+        // scalingMultiplier = 0.6 - (0.6 * 2/10) = 0.6 * 0.8 = 0.48
+        uint256 expectedScaling = 48e16; // 0.48 * 10^18
+        uint256 expectedClaimAmount = maximumClaimAmounts[0].amount.mulWad(expectedScaling);
+        assertEq(claimAmounts[0], expectedClaimAmount);
     }
 
     function test_DeriveAmounts_InvalidTargetBlockDesignation() public {
