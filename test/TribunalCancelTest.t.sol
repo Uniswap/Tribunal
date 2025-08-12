@@ -14,6 +14,7 @@ contract TribunalCancelTest is Test {
     address theCompact;
     address sponsor;
     address adjuster;
+    uint256 adjusterPrivateKey;
 
     uint256[] public emptyPriceCurve;
 
@@ -23,7 +24,7 @@ contract TribunalCancelTest is Test {
         theCompact = address(0xC0);
         tribunal = new Tribunal(theCompact);
         (sponsor,) = makeAddrAndKey("sponsor");
-        (adjuster,) = makeAddrAndKey("adjuster");
+        (adjuster, adjusterPrivateKey) = makeAddrAndKey("adjuster");
 
         emptyPriceCurve = new uint256[](0);
     }
@@ -51,8 +52,9 @@ contract TribunalCancelTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
+        // Make it cross-chain to test the AlreadyClaimed check
         Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
-            chainId: block.chainid,
+            chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -121,7 +123,6 @@ contract TribunalCancelTest is Test {
             )
         );
 
-        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
@@ -271,7 +272,6 @@ contract TribunalCancelTest is Test {
             )
         );
 
-        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
@@ -391,8 +391,9 @@ contract TribunalCancelTest is Test {
         emit Tribunal.Cancel(sponsor, claimHash);
         tribunal.cancelChainExclusive(compact, mandateHash);
 
+        // Make it cross-chain to test the AlreadyClaimed check
         Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
-            chainId: block.chainid,
+            chainId: block.chainid + 1, // Different chain
             compact: compact,
             sponsorSignature: new bytes(0),
             allocatorSignature: new bytes(0)
@@ -448,7 +449,6 @@ contract TribunalCancelTest is Test {
             )
         );
 
-        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);

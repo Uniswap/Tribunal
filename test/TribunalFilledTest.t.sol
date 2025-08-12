@@ -14,6 +14,7 @@ contract TribunalFilledTest is Test {
     address theCompact;
     address sponsor;
     address adjuster;
+    uint256 adjusterPrivateKey;
 
     uint256[] public emptyPriceCurve;
 
@@ -23,7 +24,7 @@ contract TribunalFilledTest is Test {
         theCompact = address(0xC0);
         tribunal = new Tribunal(theCompact);
         (sponsor,) = makeAddrAndKey("sponsor");
-        (adjuster,) = makeAddrAndKey("adjuster");
+        (adjuster, adjusterPrivateKey) = makeAddrAndKey("adjuster");
 
         emptyPriceCurve = new uint256[](0);
     }
@@ -130,7 +131,6 @@ contract TribunalFilledTest is Test {
             )
         );
 
-        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
