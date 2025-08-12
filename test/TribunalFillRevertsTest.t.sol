@@ -1,0 +1,280 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import {Test} from "forge-std/Test.sol";
+import {Tribunal} from "../src/Tribunal.sol";
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+
+contract TribunalFillRevertsTest is Test {
+    using FixedPointMathLib for uint256;
+
+    Tribunal public tribunal;
+    address theCompact;
+    address sponsor;
+    address adjuster;
+
+    uint256[] public emptyPriceCurve;
+
+    receive() external payable {}
+
+    function setUp() public {
+        theCompact = address(0xC0);
+        tribunal = new Tribunal(theCompact);
+        (sponsor,) = makeAddrAndKey("sponsor");
+        (adjuster,) = makeAddrAndKey("adjuster");
+
+        emptyPriceCurve = new uint256[](0);
+    }
+
+    function test_fillRevertsOnInvalidTargetBlock() public {
+        Fill memory fill = Fill({
+            chainId: block.chainid,
+            tribunal: address(tribunal),
+            expires: uint256(block.timestamp + 1),
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            baselinePriorityFee: 0,
+            scalingFactor: 0,
+            priceCurve: emptyPriceCurve,
+            recipient: address(0xBEEF),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        mandate.fills[0] = fill;
+
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+            chainId: block.chainid,
+            compact: BatchCompact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                commitments: commitments
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber() + 100,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
+
+        vm.expectRevert(
+            abi.encodeWithSignature(
+                "InvalidTargetBlock(uint256,uint256)",
+                vm.getBlockNumber() + 100,
+                vm.getBlockNumber()
+            )
+        );
+        tribunal.fill{value: 1 ether}(
+            claim,
+            fill,
+            adjuster,
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
+    }
+
+    function test_FillRevertsOnExpiredMandate() public {
+        Fill memory fill = Fill({
+            chainId: block.chainid,
+            tribunal: address(tribunal),
+            expires: 1703116800,
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            baselinePriorityFee: 100 wei,
+            scalingFactor: 1e18,
+            priceCurve: emptyPriceCurve,
+            recipient: address(0xCAFE),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        mandate.fills[0] = fill;
+
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
+
+        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+            chainId: block.chainid,
+            compact: BatchCompact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                commitments: commitments
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
+
+        vm.warp(fill.expires + 1);
+
+        vm.expectRevert(abi.encodeWithSignature("ValidityConditionsNotMet()"));
+        tribunal.fill(
+            claim,
+            fill,
+            adjuster,
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
+    }
+
+    function test_FillRevertsOnReusedClaim() public {
+        Fill memory fill = Fill({
+            chainId: block.chainid,
+            tribunal: address(tribunal),
+            expires: 1703116800,
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            baselinePriorityFee: 100 wei,
+            scalingFactor: 1e18,
+            priceCurve: emptyPriceCurve,
+            recipient: address(0xCAFE),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        mandate.fills[0] = fill;
+
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
+
+        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+            chainId: block.chainid,
+            compact: BatchCompact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                commitments: commitments
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
+
+        tribunal.fill(
+            claim,
+            fill,
+            adjuster,
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
+
+        vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
+        tribunal.fill(
+            claim,
+            fill,
+            adjuster,
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
+    }
+
+    function test_FillRevertsOnInvalidGasPrice() public {
+        Fill memory fill = Fill({
+            chainId: block.chainid,
+            tribunal: address(tribunal),
+            expires: 1703116800,
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            baselinePriorityFee: 100 wei,
+            scalingFactor: 1e18,
+            priceCurve: emptyPriceCurve,
+            recipient: address(0xCAFE),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        mandate.fills[0] = fill;
+
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
+
+        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+            chainId: block.chainid,
+            compact: BatchCompact({
+                arbiter: address(this),
+                sponsor: sponsor,
+                nonce: 0,
+                expires: block.timestamp + 1 hours,
+                commitments: commitments
+            }),
+            sponsorSignature: new bytes(0),
+            allocatorSignature: new bytes(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
+
+        vm.fee(2 gwei);
+        vm.txGasPrice(1 gwei);
+
+        vm.expectRevert(abi.encodeWithSignature("InvalidGasPrice()"));
+        tribunal.fill(
+            claim,
+            fill,
+            adjuster,
+            adjustment,
+            new bytes(0),
+            0,
+            fillHashes,
+            bytes32(uint256(uint160(address(this))))
+        );
+    }
+}

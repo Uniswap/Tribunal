@@ -123,7 +123,7 @@ contract Tribunal is BlockNumberish {
     bytes32 internal constant ADJUSTMENT_TYPEHASH =
         0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414;
 
-    string constant WITNESS_TYPESTRING =
+    string public constant WITNESS_TYPESTRING =
         "address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context";
 
     // ======== Immutables ========
