@@ -33,7 +33,7 @@ contract TribunalFilledTest is Test {
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
+            fillToken: address(0), // Use native token
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
@@ -47,10 +47,11 @@ contract TribunalFilledTest is Test {
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
-        commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
+        // Make it a cross-chain fill to avoid needing to mock TheCompact
         Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
-            chainId: block.chainid,
+            chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -72,24 +73,74 @@ contract TribunalFilledTest is Test {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
-        bytes32 claimHash =
-            tribunal.deriveClaimHash(claim.compact, tribunal.deriveMandateHash(mandate));
+        // Calculate mandateHash using the actual method used in _fill
+        bytes32 mandateHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
+                ),
+                block.chainid,
+                address(tribunal),
+                adjuster,
+                keccak256(abi.encodePacked(fillHashes))
+            )
+        );
+
+        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
         assertEq(tribunal.filled(claimHash), address(0));
 
         uint256[] memory claimAmounts = new uint256[](1);
         claimAmounts[0] = commitments[0].amount;
 
+        // Expect CrossChainFill event for cross-chain fills
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit Tribunal.SingleChainFill(
-            sponsor, address(this), claimHash, 1 ether, claimAmounts, adjustment.targetBlock
+        emit Tribunal.CrossChainFill(
+            claim.chainId,
+            sponsor,
+            address(this),
+            claimHash,
+            1 ether,
+            claimAmounts,
+            adjustment.targetBlock
         );
 
-        tribunal.fill(
+        // Sign the adjustment
+        bytes32 adjustmentHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                ),
+                claimHash,
+                adjustment.fillIndex,
+                adjustment.targetBlock,
+                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
+                adjustment.validityConditions
+            )
+        );
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                block.chainid,
+                address(tribunal)
+            )
+        );
+
+        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+
+        tribunal.fill{value: 1 ether}(
             claim,
             fill,
             adjuster,
             adjustment,
-            new bytes(0),
+            adjustmentSignature,
             0,
             fillHashes,
             bytes32(uint256(uint160(address(this))))

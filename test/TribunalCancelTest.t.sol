@@ -36,7 +36,7 @@ contract TribunalCancelTest is Test {
             fillToken: address(0),
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 0,
-            scalingFactor: 0,
+            scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
             recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
@@ -81,6 +81,51 @@ contract TribunalCancelTest is Test {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
+        // Calculate mandateHash using the actual method used in _fill
+        bytes32 fillMandateHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
+                ),
+                block.chainid,
+                address(tribunal),
+                adjuster,
+                keccak256(abi.encodePacked(fillHashes))
+            )
+        );
+
+        // Sign the adjustment
+        bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(claim.compact, fillMandateHash);
+        bytes32 adjustmentHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                ),
+                adjustmentClaimHash,
+                adjustment.fillIndex,
+                adjustment.targetBlock,
+                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
+                adjustment.validityConditions
+            )
+        );
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                block.chainid,
+                address(tribunal)
+            )
+        );
+
+        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
         tribunal.fill{value: 2 ether}(
@@ -88,7 +133,7 @@ contract TribunalCancelTest is Test {
             fill,
             adjuster,
             adjustment,
-            new bytes(0),
+            adjustmentSignature,
             0,
             fillHashes,
             bytes32(uint256(uint160(address(this))))
@@ -107,7 +152,7 @@ contract TribunalCancelTest is Test {
             fillToken: address(0),
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 0,
-            scalingFactor: 0,
+            scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
             recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
@@ -148,7 +193,7 @@ contract TribunalCancelTest is Test {
             fillToken: address(0),
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 0,
-            scalingFactor: 0,
+            scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
             recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
@@ -158,13 +203,12 @@ contract TribunalCancelTest is Test {
         Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
         mandateStruct.fills[0] = fill;
 
-        bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
-
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
+        // Make it cross-chain to avoid TheCompact mocking
         Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
-            chainId: block.chainid,
+            chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -186,18 +230,74 @@ contract TribunalCancelTest is Test {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
-        uint256 initialSenderBalance = address(this).balance;
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        vm.expectEmit(true, true, true, true, address(tribunal));
-        emit Tribunal.SingleChainFill(
-            sponsor, address(this), claimHash, 1 ether, new uint256[](1), adjustment.targetBlock
+        // Calculate mandateHash using the actual method used in _fill
+        bytes32 mandateHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
+                ),
+                block.chainid,
+                address(tribunal),
+                adjuster,
+                keccak256(abi.encodePacked(fillHashes))
+            )
         );
+
+        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+
+        // Sign the adjustment
+        bytes32 adjustmentHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                ),
+                claimHash,
+                adjustment.fillIndex,
+                adjustment.targetBlock,
+                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
+                adjustment.validityConditions
+            )
+        );
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                block.chainid,
+                address(tribunal)
+            )
+        );
+
+        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+
+        uint256 initialSenderBalance = address(this).balance;
+
+        uint256[] memory claimAmounts = new uint256[](1);
+        claimAmounts[0] = commitments[0].amount;
+
+        vm.expectEmit(true, true, true, true, address(tribunal));
+        emit Tribunal.CrossChainFill(
+            claim.chainId,
+            sponsor,
+            address(this),
+            claimHash,
+            1 ether,
+            claimAmounts,
+            adjustment.targetBlock
+        );
+
         tribunal.fill{value: 2 ether}(
             claim,
             fill,
             adjuster,
             adjustment,
-            new bytes(0),
+            adjustmentSignature,
             0,
             fillHashes,
             bytes32(uint256(uint160(address(this))))
@@ -219,7 +319,7 @@ contract TribunalCancelTest is Test {
             fillToken: address(0),
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 0,
-            scalingFactor: 0,
+            scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
             recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
@@ -261,7 +361,7 @@ contract TribunalCancelTest is Test {
             fillToken: address(0),
             minimumFillAmount: 1 ether,
             baselinePriorityFee: 0,
-            scalingFactor: 0,
+            scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
             recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
@@ -308,6 +408,51 @@ contract TribunalCancelTest is Test {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
+        // Calculate mandateHash using the actual method used in _fill
+        bytes32 fillMandateHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
+                ),
+                block.chainid,
+                address(tribunal),
+                adjuster,
+                keccak256(abi.encodePacked(fillHashes))
+            )
+        );
+
+        // Sign the adjustment
+        bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(claim.compact, fillMandateHash);
+        bytes32 adjustmentHash = keccak256(
+            abi.encode(
+                keccak256(
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                ),
+                adjustmentClaimHash,
+                adjustment.fillIndex,
+                adjustment.targetBlock,
+                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
+                adjustment.validityConditions
+            )
+        );
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                block.chainid,
+                address(tribunal)
+            )
+        );
+
+        (uint256 adjusterPrivateKey) = uint256(keccak256(abi.encodePacked("adjuster")));
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
         tribunal.fill{value: 2 ether}(
@@ -315,7 +460,7 @@ contract TribunalCancelTest is Test {
             fill,
             adjuster,
             adjustment,
-            new bytes(0),
+            adjustmentSignature,
             0,
             fillHashes,
             bytes32(uint256(uint160(address(this))))
