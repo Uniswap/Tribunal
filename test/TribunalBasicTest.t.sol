@@ -6,6 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {WITNESS_TYPESTRING} from "../src/types/TribunalTypeHashes.sol";
 
 contract TribunalBasicTest is Test {
     using FixedPointMathLib for uint256;
@@ -27,6 +28,8 @@ contract TribunalBasicTest is Test {
 
     bytes32 constant MANDATE_LOCK_TYPEHASH =
         keccak256("Mandate_Lock(bytes12 lockTag,address token,uint256 amount)");
+
+    bytes32 constant LOCK_TYPEHASH = keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
 
     receive() external payable {}
 
@@ -136,7 +139,7 @@ contract TribunalBasicTest is Test {
             abi.encodePacked(
                 keccak256(
                     abi.encode(
-                        MANDATE_LOCK_TYPEHASH,
+                        LOCK_TYPEHASH,
                         compact.commitments[0].lockTag,
                         compact.commitments[0].token,
                         compact.commitments[0].amount
@@ -164,7 +167,7 @@ contract TribunalBasicTest is Test {
         (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg) =
             tribunal.getCompactWitnessDetails();
 
-        assertEq(witnessTypeString, string.concat("Mandate(", tribunal.WITNESS_TYPESTRING(), ")"));
+        assertEq(witnessTypeString, string.concat("Mandate(", WITNESS_TYPESTRING, ")"));
         assertEq(tokenArg, 4);
         assertEq(amountArg, 5);
     }
