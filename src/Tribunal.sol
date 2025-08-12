@@ -700,7 +700,12 @@ contract Tribunal is BlockNumberish {
         }
 
         uint256 validBlockWindow = uint256(adjustment.validityConditions) >> 160;
-        if (adjustment.targetBlock + validBlockWindow > fillBlock || validFiller != msg.sender) {
+        // A validBlockWindow of 0 means no window restriction (valid indefinitely)
+        if (
+            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow > fillBlock)).or(
+                validFiller != msg.sender
+            )
+        ) {
             revert ValidityConditionsNotMet();
         }
 
