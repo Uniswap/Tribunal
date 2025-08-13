@@ -229,9 +229,6 @@ contract Tribunal is BlockNumberish {
 
         address claimant = _dispositions[sourceClaimHash];
         if (claimant != address(0)) {
-            // Remove the source claimHash for replay protection
-            delete _dispositions[sourceClaimHash];
-
             uint256 index;
             if (compact.commitments[0].token == address(0)) {
                 // Handle native token
