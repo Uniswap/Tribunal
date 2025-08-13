@@ -296,20 +296,25 @@ contract Tribunal is BlockNumberish {
                 LibBytes.emptyCalldata()
             );
 
-            // TODO: only deposit if mandateHash is zero
-
-            // deposit and register the tokens
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                value: address(this).balance
-            }(
-                compact.sponsor,
-                idsAndAmounts,
-                compact.arbiter,
-                nonce,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash
-            );
+            // deposit if mandateHash is zero
+            if (mandateHash == bytes32(0)) {
+                ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+                    idsAndAmounts, recipient
+                );
+            } else {
+                // deposit and register the tokens
+                (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                    value: address(this).balance
+                }(
+                    compact.sponsor,
+                    idsAndAmounts,
+                    compact.arbiter,
+                    nonce,
+                    compact.expires,
+                    COMPACT_TYPEHASH_WITH_MANDATE,
+                    mandateHash
+                );
+            }
 
             // execute the allocation
             IOnChainAllocation(allocator).executeAllocation(
@@ -322,20 +327,25 @@ contract Tribunal is BlockNumberish {
                 LibBytes.emptyCalldata()
             );
         } else {
-            // TODO: only deposit if mandateHash is zero
-
-            // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                value: address(this).balance
-            }(
-                compact.sponsor,
-                idsAndAmounts,
-                compact.arbiter,
-                compact.nonce,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash
-            );
+            // deposit if mandateHash is zero
+            if (mandateHash == bytes32(0)) {
+                ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+                    idsAndAmounts, recipient
+                );
+            } else {
+                // deposit and register the tokens directly and skip an on chain allocation
+                (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                    value: address(this).balance
+                }(
+                    compact.sponsor,
+                    idsAndAmounts,
+                    compact.arbiter,
+                    compact.nonce,
+                    compact.expires,
+                    COMPACT_TYPEHASH_WITH_MANDATE,
+                    mandateHash
+                );
+            }
         }
         return registeredClaimHash;
     }
