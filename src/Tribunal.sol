@@ -88,6 +88,7 @@ contract Tribunal is BlockNumberish {
     error InvalidFillHashArguments();
     error InvalidRecipientCallback();
     error InvalidChainId();
+    error InvalidCommitmentsArray();
 
     // ======== Type Declarations ========
     struct BatchClaim {
@@ -221,42 +222,54 @@ contract Tribunal is BlockNumberish {
     function settleOrRegister(
         bytes32 sourceClaimHash,
         BatchCompact calldata compact,
-        bytes32 mandateHash
+        bytes32 mandateHash,
+        address recipient
     ) external returns (bytes32 registeredClaimHash) {
-        if (compact.commitments.length == 0) {
-            revert AlreadyClaimed();
+        if (compact.commitments.length != 1) {
+            revert InvalidCommitmentsArray();
         }
+        Lock calldata commitment = compact.commitments[0];
 
         address claimant = _dispositions[sourceClaimHash];
         if (claimant != address(0)) {
-            uint256 index;
-            if (compact.commitments[0].token == address(0)) {
+            if (commitment.token == address(0)) {
                 // Handle native token
                 SafeTransferLib.safeTransferETH(claimant, address(this).balance);
-                index++;
-            }
-            for (; index < compact.commitments.length; index++) {
+            } else {
                 // Handle ERC20 tokens
-                compact.commitments[index].token.safeTransferAll(claimant);
+                commitment.token.safeTransferAll(claimant);
             }
+
             return bytes32(0);
         }
 
+        address sponsor = compact.sponsor;
+        assembly ("memory-safe") {
+            recipient := xor(recipient, mul(iszero(recipient), sponsor))
+        }
+
+        if (commitment.lockTag == bytes12(0)) {
+            if (commitment.token == address(0)) {
+                // Handle native token
+                SafeTransferLib.safeTransferETH(recipeint, address(this).balance);
+            } else {
+                // Handle ERC20 tokens
+                commitment.token.safeTransferAll(recipeint);
+            }
+        }
+
         // Prepare the ids and amounts, dependent on the actual balance
-        uint256[2][] memory idsAndAmounts = new uint256[2][](compact.commitments.length);
-        uint256 i;
+        uint256[2][] memory idsAndAmounts = new uint256[2][](1);
         if (compact.commitments[0].token == address(0)) {
             // Handle native token
-            idsAndAmounts[i][0] = uint256(bytes32(compact.commitments[i].lockTag))
+            idsAndAmounts[0][0] = uint256(bytes32(compact.commitments[i].lockTag))
                 | uint256(uint160(compact.commitments[i].token));
-            idsAndAmounts[i][1] = address(this).balance;
-            i++;
-        }
-        for (; i < compact.commitments.length; i++) {
+            idsAndAmounts[0][1] = address(this).balance;
+        } else {
             // Handle ERC20 tokens
-            idsAndAmounts[i][0] = uint256(bytes32(compact.commitments[i].lockTag))
+            idsAndAmounts[0][0] = uint256(bytes32(compact.commitments[i].lockTag))
                 | uint256(uint160(compact.commitments[i].token));
-            idsAndAmounts[i][1] = compact.commitments[i].token.balanceOf(address(this));
+            idsAndAmounts[0][1] = compact.commitments[i].token.balanceOf(address(this));
             if (
                 _checkCompactAllowance(compact.commitments[i].token, address(this))
                     < idsAndAmounts[i][1]
@@ -283,6 +296,8 @@ contract Tribunal is BlockNumberish {
                 LibBytes.emptyCalldata()
             );
 
+            // TODO: only deposit if mandateHash is zero
+
             // deposit and register the tokens
             (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
                 value: address(this).balance
@@ -307,6 +322,8 @@ contract Tribunal is BlockNumberish {
                 LibBytes.emptyCalldata()
             );
         } else {
+            // TODO: only deposit if mandateHash is zero
+
             // deposit and register the tokens directly and skip an on chain allocation
             (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
                 value: address(this).balance

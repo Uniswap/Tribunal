@@ -105,7 +105,8 @@ contract TribunalReentrancyTest is Test, ITribunalCallback {
         );
 
         // For same-chain fills, the claimHash will be what MockTheCompact returns
-        bytes32 claimHash = bytes32(uint256(0x5ab5d4a8ba29d5317682f2808ad60826cc75eb191581bea9f13d498a6f8e6311));
+        bytes32 claimHash =
+            bytes32(uint256(0x5ab5d4a8ba29d5317682f2808ad60826cc75eb191581bea9f13d498a6f8e6311));
 
         // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
