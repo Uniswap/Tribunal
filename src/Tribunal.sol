@@ -165,9 +165,9 @@ contract Tribunal is BlockNumberish {
      * @param adjuster The assigned adjuster for the fill.
      * @param adjustment The adjustment provided by the adjuster for the fill.
      * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
      * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param fillBlock The block number to target for the fill (0 allows any block).
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
      * @return fillAmount The amount of tokens to be filled.
@@ -179,9 +179,9 @@ contract Tribunal is BlockNumberish {
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
-        uint256 fillBlock,
         bytes32[] calldata fillHashes,
-        bytes32 claimant
+        bytes32 claimant,
+        uint256 fillBlock
     )
         external
         payable
@@ -360,9 +360,9 @@ contract Tribunal is BlockNumberish {
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
      * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
      * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param fillBlock The block number to target for the fill (0 allows any block).
      * @return dispensation The amount quoted to perform the dispensation.
      */
     function quote(
@@ -370,9 +370,9 @@ contract Tribunal is BlockNumberish {
         Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
-        uint256 fillBlock,
         bytes32[] calldata fillHashes,
-        bytes32 claimant
+        bytes32 claimant,
+        uint256 fillBlock
     ) external view returns (uint256 dispensation) {
         return _quote(
             claim.chainId,
