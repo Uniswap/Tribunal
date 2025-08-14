@@ -223,15 +223,7 @@ contract TribunalCancelTest is Test {
 
         // Calculate mandateHash using the actual method used in _fill
         bytes32 mandateHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
-                ),
-                block.chainid,
-                address(tribunal),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
@@ -401,15 +393,7 @@ contract TribunalCancelTest is Test {
 
         // Calculate mandateHash using the actual method used in _fill
         bytes32 fillMandateHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
-                ),
-                block.chainid,
-                address(tribunal),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
 
         // Sign the adjustment

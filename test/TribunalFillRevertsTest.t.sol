@@ -233,13 +233,7 @@ contract TribunalFillRevertsTest is Test {
         // Calculate mandateHash and claimHash for signature
         // Note: The fill function uses _deriveMandateHash internally with fillHashes
         bytes32 mandateHash = keccak256(
-            abi.encode(
-                MANDATE_TYPEHASH,
-                block.chainid,
-                address(tribunal),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
 
