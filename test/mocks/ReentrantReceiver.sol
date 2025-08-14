@@ -58,9 +58,9 @@ contract ReentrantReceiver {
             _mandate.fills[0],
             address(this),
             adjustment,
-            block.number,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            block.number
         );
         uint256 balanceBefore = address(this).balance;
         try _TRIBUNAL.fill{value: quote}(
@@ -69,9 +69,9 @@ contract ReentrantReceiver {
             address(this),
             adjustment,
             new bytes(0),
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         ) {
             if (address(this).balance < balanceBefore) {
                 revert NoProfit(balanceBefore, address(this).balance);

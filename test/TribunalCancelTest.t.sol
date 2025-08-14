@@ -6,6 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
 contract TribunalCancelTest is Test {
     using FixedPointMathLib for uint256;
@@ -85,15 +86,7 @@ contract TribunalCancelTest is Test {
 
         // Calculate mandateHash using the actual method used in _fill
         bytes32 fillMandateHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
-                ),
-                block.chainid,
-                address(tribunal),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
 
         // Sign the adjustment
@@ -101,7 +94,7 @@ contract TribunalCancelTest is Test {
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 adjustmentClaimHash,
                 adjustment.fillIndex,
@@ -135,9 +128,9 @@ contract TribunalCancelTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         assertEq(address(0xBEEF).balance, 0 ether);
@@ -201,9 +194,6 @@ contract TribunalCancelTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
-        mandateStruct.fills[0] = fill;
-
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -250,7 +240,7 @@ contract TribunalCancelTest is Test {
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 claimHash,
                 adjustment.fillIndex,
@@ -298,9 +288,9 @@ contract TribunalCancelTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         assertEq(address(0xBEEF).balance, fill.minimumFillAmount);
@@ -427,7 +417,7 @@ contract TribunalCancelTest is Test {
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 adjustmentClaimHash,
                 adjustment.fillIndex,
@@ -461,9 +451,9 @@ contract TribunalCancelTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         assertEq(address(0xBEEF).balance, 0 ether);

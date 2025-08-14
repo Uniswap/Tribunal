@@ -445,13 +445,7 @@ contract Tribunal is BlockNumberish {
      */
     function deriveMandateHash(Mandate calldata mandate) public view returns (bytes32) {
         return keccak256(
-            abi.encode(
-                MANDATE_TYPEHASH,
-                block.chainid,
-                address(this),
-                mandate.adjuster,
-                deriveFillsHash(mandate.fills)
-            )
+            abi.encode(MANDATE_TYPEHASH, mandate.adjuster, deriveFillsHash(mandate.fills))
         );
     }
 

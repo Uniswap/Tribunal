@@ -44,9 +44,6 @@ contract TribunalFilledTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
-        mandate.fills[0] = fill;
-
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -74,8 +71,20 @@ contract TribunalFilledTest is Test {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
-        // Calculate mandateHash using the actual method used in _fill
-        bytes32 mandateHash = keccak256(
+        // Build a Mandate struct to compute the hash properly
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        mandateStruct.fills[0] = fill;
+
+        bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
+        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+        assertEq(tribunal.filled(claimHash), address(0));
+
+        uint256[] memory claimAmounts = new uint256[](1);
+        claimAmounts[0] = commitments[0].amount;
+
+        // The actual claimHash will be computed in _fill using the mandateHash from _deriveMandateHash
+        // We need to compute it the same way for the adjustment signature
+        bytes32 actualMandateHash = keccak256(
             abi.encode(
                 keccak256(
                     "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
@@ -86,12 +95,7 @@ contract TribunalFilledTest is Test {
                 keccak256(abi.encodePacked(fillHashes))
             )
         );
-
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        assertEq(tribunal.filled(claimHash), address(0));
-
-        uint256[] memory claimAmounts = new uint256[](1);
-        claimAmounts[0] = commitments[0].amount;
+        bytes32 actualClaimHash = tribunal.deriveClaimHash(claim.compact, actualMandateHash);
 
         // Expect CrossChainFill event for cross-chain fills
         vm.expectEmit(true, true, true, true, address(tribunal));
@@ -99,19 +103,19 @@ contract TribunalFilledTest is Test {
             claim.chainId,
             sponsor,
             address(this),
-            claimHash,
+            actualClaimHash,
             1 ether,
             claimAmounts,
             adjustment.targetBlock
         );
 
-        // Sign the adjustment
+        // Sign the adjustment with the actual claimHash that will be computed in _fill
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
-                claimHash,
+                actualClaimHash,
                 adjustment.fillIndex,
                 adjustment.targetBlock,
                 keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
@@ -141,10 +145,10 @@ contract TribunalFilledTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
-        assertEq(tribunal.filled(claimHash), address(this));
+        assertEq(tribunal.filled(actualClaimHash), address(this));
     }
 }

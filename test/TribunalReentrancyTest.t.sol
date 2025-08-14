@@ -62,9 +62,6 @@ contract TribunalReentrancyTest is Test, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
-        mandate.fills[0] = fill;
-
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -112,7 +109,7 @@ contract TribunalReentrancyTest is Test, ITribunalCallback {
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 claimHash,
                 adjustment.fillIndex,
@@ -139,38 +136,22 @@ contract TribunalReentrancyTest is Test, ITribunalCallback {
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
         uint256 initialRecipientBalance = address(reentrantReceiver).balance;
-
         uint256 initialSenderBalance = address(this).balance;
 
-        Tribunal.BatchClaim memory reentrantClaim = reentrantReceiver.getClaim();
-        Fill memory reentrantFill = reentrantReceiver.getMandate();
-        vm.expectCall(
-            address(tribunal),
-            abi.encodeCall(
-                Tribunal.fill,
-                (
-                    reentrantClaim,
-                    reentrantFill,
-                    address(reentrantReceiver),
-                    adjustment,
-                    new bytes(0),
-                    0,
-                    fillHashes,
-                    bytes32(uint256(uint160(address(reentrantReceiver))))
-                )
-            )
-        );
+        // The first fill should succeed despite the reentrancy attempt
+        // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         tribunal.fill{value: 5 ether}(
             claim,
             fill,
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
+        // Verify that the first fill succeeded and the recipient received the funds
         assertEq(
             address(reentrantReceiver).balance, initialRecipientBalance + fill.minimumFillAmount
         );

@@ -120,9 +120,9 @@ contract TribunalFillRevertsTest is Test {
             adjuster,
             adjustment,
             new bytes(0),
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
     }
 
@@ -179,9 +179,9 @@ contract TribunalFillRevertsTest is Test {
             adjuster,
             adjustment,
             new bytes(0),
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
     }
 
@@ -253,9 +253,9 @@ contract TribunalFillRevertsTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
@@ -265,9 +265,9 @@ contract TribunalFillRevertsTest is Test {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
     }
 
@@ -325,9 +325,9 @@ contract TribunalFillRevertsTest is Test {
             adjuster,
             adjustment,
             new bytes(0),
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
     }
 }

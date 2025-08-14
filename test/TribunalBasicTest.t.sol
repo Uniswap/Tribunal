@@ -66,11 +66,7 @@ contract TribunalBasicTest is Test {
 
         bytes32 fillsHash = keccak256(abi.encodePacked(tribunal.deriveFillHash(fill)));
 
-        bytes32 expectedHash = keccak256(
-            abi.encode(
-                MANDATE_TYPEHASH, block.chainid, address(tribunal), mandate.adjuster, fillsHash
-            )
-        );
+        bytes32 expectedHash = keccak256(abi.encode(MANDATE_TYPEHASH, mandate.adjuster, fillsHash));
 
         assertEq(tribunal.deriveMandateHash(mandate), expectedHash);
     }
@@ -95,11 +91,7 @@ contract TribunalBasicTest is Test {
 
         bytes32 fillsHash = keccak256(abi.encodePacked(tribunal.deriveFillHash(fill)));
 
-        bytes32 expectedHash = keccak256(
-            abi.encode(
-                MANDATE_TYPEHASH, block.chainid, address(tribunal), mandate.adjuster, fillsHash
-            )
-        );
+        bytes32 expectedHash = keccak256(abi.encode(MANDATE_TYPEHASH, mandate.adjuster, fillsHash));
 
         assertEq(tribunal.deriveMandateHash(mandate), expectedHash);
     }

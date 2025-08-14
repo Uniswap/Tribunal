@@ -130,7 +130,7 @@ library PriceCurveLib {
     {
         // Check if there are no parameters
         if (parameters.length == 0) {
-            return (0);
+            return (1e18);
         }
 
         uint256 blocksCounted = 0;

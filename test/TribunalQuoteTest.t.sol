@@ -79,7 +79,7 @@ contract TribunalQuoteTest is Test {
         uint256 expectedQuote = address(this).balance / 1000;
         assertEq(
             tribunal.quote(
-                claim, fill, adjuster, adjustment, vm.getBlockNumber(), fillHashes, claimant
+                claim, fill, adjuster, adjustment, fillHashes, claimant, vm.getBlockNumber()
             ),
             expectedQuote
         );

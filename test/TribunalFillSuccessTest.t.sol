@@ -108,10 +108,12 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
         bytes32 claimHash =
             bytes32(uint256(0x5ab5d4a8ba29d5317682f2808ad60826cc75eb191581bea9f13d498a6f8e6311));
 
-        // Sign the adjustment (Note: The type string has bytes32 for supplementalPriceCurve, not uint256[])
+        // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
             abi.encode(
-                0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414, // ADJUSTMENT_TYPEHASH
+                keccak256(
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
+                ),
                 claimHash,
                 adjustment.fillIndex,
                 adjustment.targetBlock,
@@ -143,9 +145,9 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         assertEq(address(0xBEEF).balance, 1 ether);
@@ -222,7 +224,7 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,bytes32 supplementalPriceCurve,bytes32 validityConditions)"
+                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 claimHash,
                 adjustment.fillIndex,
@@ -262,9 +264,9 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
             adjuster,
             adjustment,
             adjustmentSignature,
-            0,
             fillHashes,
-            bytes32(uint256(uint160(address(this))))
+            bytes32(uint256(uint160(address(this)))),
+            0
         );
 
         assertEq(token.balanceOf(address(0xBEEF)) - initialRecipientBalance, 100e18);
