@@ -6,6 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
 contract TribunalFilledTest is Test {
     using FixedPointMathLib for uint256;
@@ -84,16 +85,9 @@ contract TribunalFilledTest is Test {
 
         // The actual claimHash will be computed in _fill using the mandateHash from _deriveMandateHash
         // We need to compute it the same way for the adjustment signature
+        // The mandate hash typehash should match MANDATE_TYPEHASH from TribunalTypeHashes.sol
         bytes32 actualMandateHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Mandate(uint256 chainId,address tribunal,address adjuster,bytes32 fills)"
-                ),
-                block.chainid,
-                address(tribunal),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
         bytes32 actualClaimHash = tribunal.deriveClaimHash(claim.compact, actualMandateHash);
 

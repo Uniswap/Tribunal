@@ -461,13 +461,7 @@ contract Tribunal is BlockNumberish {
         }
 
         return keccak256(
-            abi.encode(
-                MANDATE_TYPEHASH,
-                block.chainid,
-                address(this),
-                adjuster,
-                keccak256(abi.encodePacked(fillHashes))
-            )
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
     }
 
