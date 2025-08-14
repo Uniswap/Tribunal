@@ -231,6 +231,8 @@ contract Tribunal is BlockNumberish {
         Lock calldata commitment = compact.commitments[0];
 
         address claimant = _dispositions[sourceClaimHash];
+
+        // An available claimant indicates a fill, transfer the tokens to the claimant
         if (claimant != address(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
@@ -248,36 +250,41 @@ contract Tribunal is BlockNumberish {
             recipient := xor(recipient, mul(iszero(recipient), sponsor))
         }
 
+        // An empty lockTag indicates a direct transfer
         if (commitment.lockTag == bytes12(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
-                SafeTransferLib.safeTransferETH(recipeint, address(this).balance);
+                SafeTransferLib.safeTransferETH(recipient, address(this).balance);
             } else {
                 // Handle ERC20 tokens
-                commitment.token.safeTransferAll(recipeint);
+                commitment.token.safeTransferAll(recipient);
             }
+            return bytes32(0);
         }
 
         // Prepare the ids and amounts, dependent on the actual balance
         uint256[2][] memory idsAndAmounts = new uint256[2][](1);
+        idsAndAmounts[0][0] =
+            uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
         if (compact.commitments[0].token == address(0)) {
             // Handle native token
-            idsAndAmounts[0][0] = uint256(bytes32(compact.commitments[i].lockTag))
-                | uint256(uint160(compact.commitments[i].token));
             idsAndAmounts[0][1] = address(this).balance;
         } else {
             // Handle ERC20 tokens
-            idsAndAmounts[0][0] = uint256(bytes32(compact.commitments[i].lockTag))
-                | uint256(uint160(compact.commitments[i].token));
-            idsAndAmounts[0][1] = compact.commitments[i].token.balanceOf(address(this));
-            if (
-                _checkCompactAllowance(compact.commitments[i].token, address(this))
-                    < idsAndAmounts[i][1]
-            ) {
+            idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
+            if (_checkCompactAllowance(commitment.token, address(this)) < idsAndAmounts[0][1]) {
                 SafeTransferLib.safeApproveWithRetry(
-                    compact.commitments[i].token, address(theCompact), type(uint256).max
+                    commitment.token, address(theCompact), type(uint256).max
                 );
             }
+        }
+
+        // An empty mandateHash indicates a deposit without a registration.
+        if (mandateHash == bytes32(0)) {
+            ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+                idsAndAmounts, recipient
+            );
+            return bytes32(0);
         }
 
         if (compact.nonce == 0) {
@@ -327,25 +334,18 @@ contract Tribunal is BlockNumberish {
                 LibBytes.emptyCalldata()
             );
         } else {
-            // deposit if mandateHash is zero
-            if (mandateHash == bytes32(0)) {
-                ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
-                    idsAndAmounts, recipient
-                );
-            } else {
-                // deposit and register the tokens directly and skip an on chain allocation
-                (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                    value: address(this).balance
-                }(
-                    compact.sponsor,
-                    idsAndAmounts,
-                    compact.arbiter,
-                    compact.nonce,
-                    compact.expires,
-                    COMPACT_TYPEHASH_WITH_MANDATE,
-                    mandateHash
-                );
-            }
+            // deposit and register the tokens directly and skip an on chain allocation
+            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                value: address(this).balance
+            }(
+                compact.sponsor,
+                idsAndAmounts,
+                compact.arbiter,
+                compact.nonce,
+                compact.expires,
+                COMPACT_TYPEHASH_WITH_MANDATE,
+                mandateHash
+            );
         }
         return registeredClaimHash;
     }
