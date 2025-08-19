@@ -1,6 +1,89 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
+/* Example payload signed by swapper for a cross-chain swap with a decomposed same-chain swap on source chain + bridge + register same-chain swap on target chain:
+{
+    arbiter: SOURCE_CHAIN_TRIBUNAL_CONTRACT,
+    sponsor: SWAPPER,
+    nonce: SOURCE_CLAIM_NONCE,
+    expires: SOURCE_CLAIM_EXPIRATION,
+    commitments: [
+        {
+            lockTag: ONCHAIN_ALLOCATOR_LOCK_TAG_WITH_DEFAULT_PARAMS,
+            token: SOURCE_CHAIN_UNI,
+            amount: 1_000_000_000_000_000_000
+        }
+    ],
+    mandate: {
+        adjuster: UNISWAP_TEE,
+        fills: [
+            {
+                chainId: TARGET_CHAIN_ID,
+                tribunal: TARGET_CHAIN_TRIBUNAL_CONTRACT,
+                expires; CROSS_CHAIN_FILL_EXPIRATION,
+                fillToken: TARGET_CHAIN_USDC,
+                minimumFillAmount: 10_017_500,
+                baselinePriorityFee; 1_000_000_000,
+                scalingFactor; 0x00000x0002000000000000000000000000000000000000000000000de0b6b3a7640005,
+                priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640002, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640001]
+                recipient: SWAPPER,
+                recipientCallback: [],
+                salt: 0x1234567890123456789012345678901234567890123456789012345678901234
+            },
+            {
+                chainId: SOURCE_CHAIN_ID,
+                tribunal: SOURCE_CHAIN_TRIBUNAL_CONTRACT,
+                expires; SAME_CHAIN_FILL_EXPIRATION,
+                fillToken: ETH,
+                minimumFillAmount: 2_404_400_000_000_000,
+                baselinePriorityFee; 0,
+                scalingFactor; 0,
+                priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640005, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640003]
+                recipient: ACROSS_ADAPTER,
+                recipientCallback: [
+                    {
+                        chainId: TARGET_CHAIN_ID,
+                        compact: {
+                            arbiter: TARGET_CHAIN_TRIBUNAL_CONTRACT,
+                            sponsor: SWAPPER,
+                            nonce: TARGET_CLAIM_NONCE,
+                            expires: TARGET_CLAIM_EXPIRATION,
+                            commitments: [
+                                {
+                                    lockTag: ONCHAIN_ALLOCATOR_LOCK_TAG_WITH_DEFAULT_PARAMS,
+                                    token: ETH,
+                                    amount: PLACEHOLDER_VALUE_POPULATED_BY_ADAPTER
+                                }
+                            ],
+                            mandate: {
+                                adjuster: UNISWAP_TEE,
+                                fills: [
+                                    {
+                                        chainId: TARGET_CHAIN_ID,
+                                        tribunal: TARGET_CHAIN_TRIBUNAL_CONTRACT,
+                                        expires; TARGET_CHAIN_FILL_EXPIRATION,
+                                        fillToken: TARGET_CHAIN_USDC,
+                                        minimumFillAmount: 10_010_000,
+                                        baselinePriorityFee; 1_000_000_000,
+                                        scalingFactor; 0x00000x0002000000000000000000000000000000000000000000000de0b6b3a7640005,
+                                        priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640002, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640001]
+                                        recipient: SWAPPER,
+                                        recipientCallback: [],
+                                        salt: 0x1234567890123456789012345678901234567890123456789012345678901234
+                                    }
+                                ]
+                            }
+                        },
+                        context: "0x"
+                    }
+                ],
+                salt: 0x1234567890123456789012345678901234567890123456789012345678901234
+            },
+        ]
+    }
+}
+*/
+
 // Type string constants extracted from Tribunal.sol
 string constant MANDATE_TYPESTRING =
     "Mandate(address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context)";
