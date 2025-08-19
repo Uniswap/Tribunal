@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 // Overview of the sequence of steps:
 //  1) sponsor deposits and registers a compact on the source chain assigning an adjuster, a cross-chain fill, and a source-chain fallback action that will trigger a deposit and registration of a target-chain compact. Allocator ensures that deposited tokens are allocated.
