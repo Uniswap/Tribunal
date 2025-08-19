@@ -44,11 +44,9 @@ contract Tribunal is BlockNumberish {
     using FixedPointMathLib for uint256;
     using SafeTransferLib for address;
     using EfficiencyLib for bool;
-    using EfficiencyLib for uint256;
     using PriceCurveLib for uint256[];
     using PriceCurveLib for uint256;
     using SignatureCheckerLib for address;
-    using DomainLib for uint256;
     using DomainLib for bytes32;
 
     // ======== Events ========
