@@ -6,7 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
-import {ITribunalCallback} from "../src/Interfaces/ITribunalCallback.sol";
+import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 

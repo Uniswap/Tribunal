@@ -15,7 +15,7 @@ import {ITheCompact} from "the-compact/src/interfaces/ITheCompact.sol";
 import {IOnChainAllocation} from "the-compact/src/interfaces/IOnChainAllocation.sol";
 import {BatchClaim as CompactBatchClaim} from "the-compact/src/types/BatchClaims.sol";
 import {BatchClaimComponent, Component} from "the-compact/src/types/Components.sol";
-import {ITribunalCallback} from "./Interfaces/ITribunalCallback.sol";
+import {ITribunalCallback} from "./interfaces/ITribunalCallback.sol";
 import {Adjustment, Mandate, Fill, RecipientCallback} from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
 import {IRecipientCallback} from "./interfaces/IRecipientCallback.sol";
