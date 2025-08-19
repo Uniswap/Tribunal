@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IArbSys} from "./Interfaces/IArbSys.sol";
+import {IArbSys} from "./interfaces/IArbSys.sol";
 
 /// @title BlockNumberish
 /// A helper contract to get the current block number on different chains
