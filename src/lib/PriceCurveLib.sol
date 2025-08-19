@@ -1,117 +1,136 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.28;
 
-/**
- * @title DecayParameter
- * @dev Custom type for decay parameters with bit-packed values
- */
-type DecayParameter is uint256;
+import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
+import {EfficiencyLib} from "the-compact/src/lib/EfficiencyLib.sol";
 
 /**
- * @title DecayParameterLib
+ * @title PriceCurveLib
+ * @dev Custom type for price curve parameters with bit-packed values
+ */
+type PriceCurveElement is uint256;
+
+/**
+ * @title PriceCurveLib
  * @dev Library for the DecayParameter type which packs three values:
  *      - blockDuration (16 bits): Duration in blocks
- *      - fillIncrease (120 bits): Amount to increase on fill
- *      - claimDecrease (120 bits): Amount to decrease on claim
+ *      - scalingFactor (240 bits): additional scaling factor to apply to fill increase or claim decrease
  */
-library DecayParameterLib {
-    error DecayBlocksExceeded();
+library PriceCurveLib {
+    using PriceCurveLib for uint256;
+    using FixedPointMathLib for uint256;
+    using EfficiencyLib for bool;
+
+    error PriceCurveBlocksExceeded();
+    error InvalidPriceCurveParameters();
 
     // Constants for bit manipulation
-    uint256 private constant FILL_INCREASE_BITS = 120;
-    uint256 private constant CLAIM_DECREASE_BITS = 120;
+    uint256 private constant BLOCK_DURATION_BITS = 16;
+    uint256 private constant SCALING_FACTOR_BITS = 240;
 
     // Bit positions
-    uint256 private constant FILL_INCREASE_SHIFT = CLAIM_DECREASE_BITS;
-    uint256 private constant BLOCK_DURATION_SHIFT = CLAIM_DECREASE_BITS + FILL_INCREASE_BITS;
+    uint256 private constant BLOCK_DURATION_SHIFT = SCALING_FACTOR_BITS;
 
     // Bit masks
-    uint256 private constant CLAIM_DECREASE_MASK = ((1 << CLAIM_DECREASE_BITS) - 1);
-    uint256 private constant FILL_INCREASE_MASK =
-        ((1 << FILL_INCREASE_BITS) - 1) << FILL_INCREASE_SHIFT;
-
+    uint256 private constant SCALING_FACTOR_MASK = ((1 << SCALING_FACTOR_BITS) - 1);
     /**
-     * @dev Create a new DecayParameter from individual components
+     * @dev Create a new PriceCurveElement from individual components
      * @param blockDuration Duration in blocks (16 bits)
-     * @param fillIncrease Amount to increase on fill (120 bits)
-     * @param claimDecrease Amount to decrease on claim (120 bits)
-     * @return The packed DecayParameter
+     * @param scalingFactor Additional scaling factor to apply to fill increase or claim decrease
+     * @return The packed PriceCurveElement
      */
-    function create(uint16 blockDuration, uint120 fillIncrease, uint120 claimDecrease)
+
+    function create(uint16 blockDuration, uint240 scalingFactor)
         internal
         pure
-        returns (DecayParameter)
+        returns (PriceCurveElement)
     {
-        uint256 packed = uint256(claimDecrease);
-        packed |= uint256(fillIncrease) << FILL_INCREASE_SHIFT;
-        packed |= uint256(blockDuration) << BLOCK_DURATION_SHIFT;
+        uint256 packed = (uint256(blockDuration) << BLOCK_DURATION_SHIFT) | uint256(scalingFactor);
 
-        return DecayParameter.wrap(packed);
+        return PriceCurveElement.wrap(packed);
     }
 
     /**
      * @dev Get the blockDuration value
-     * @param self The DecayParameter
+     * @param self The PriceCurveElement
      * @return The blockDuration as uint256
      */
-    function getBlockDuration(DecayParameter self) internal pure returns (uint256) {
-        return DecayParameter.unwrap(self) >> BLOCK_DURATION_SHIFT;
+    function getBlockDuration(PriceCurveElement self) internal pure returns (uint256) {
+        return PriceCurveElement.unwrap(self) >> BLOCK_DURATION_SHIFT;
     }
 
     /**
-     * @dev Get the fillIncrease value
-     * @param self The DecayParameter
-     * @return The fillIncrease as uint256
+     * @dev Get the scalingFactor value
+     * @param self The PriceCurveElement
+     * @return The scaling factor as uint256
      */
-    function getFillIncrease(DecayParameter self) internal pure returns (uint256) {
-        return (DecayParameter.unwrap(self) & FILL_INCREASE_MASK) >> FILL_INCREASE_SHIFT;
-    }
-
-    /**
-     * @dev Get the claimDecrease value
-     * @param self The DecayParameter
-     * @return The claimDecrease as uint256
-     */
-    function getClaimDecrease(DecayParameter self) internal pure returns (uint256) {
-        return DecayParameter.unwrap(self) & CLAIM_DECREASE_MASK;
+    function getFillIncrease(PriceCurveElement self) internal pure returns (uint256) {
+        return PriceCurveElement.unwrap(self) & SCALING_FACTOR_MASK;
     }
 
     /**
      * @dev Get all components at once
-     * @param self The DecayParameter
+     * @param self The PriceCurve element
      * @return blockDuration The blockDuration value
-     * @return fillIncrease The fillIncrease value
-     * @return claimDecrease The claimDecrease value
+     * @return scalingFactor The scaling factor as uint256
      */
-    function getComponents(DecayParameter self)
+    function getComponents(PriceCurveElement self)
         internal
         pure
-        returns (uint256 blockDuration, uint256 fillIncrease, uint256 claimDecrease)
+        returns (uint256 blockDuration, uint256 scalingFactor)
     {
-        uint256 value = DecayParameter.unwrap(self);
+        uint256 value = PriceCurveElement.unwrap(self);
 
         blockDuration = value >> BLOCK_DURATION_SHIFT;
-        fillIncrease = (value & FILL_INCREASE_MASK) >> FILL_INCREASE_SHIFT;
-        claimDecrease = value & CLAIM_DECREASE_MASK;
+        scalingFactor = (value & SCALING_FACTOR_MASK);
 
-        return (blockDuration, fillIncrease, claimDecrease);
+        return (blockDuration, scalingFactor);
+    }
+
+    function applySupplementalPriceCurve(
+        uint256[] calldata parameters,
+        uint256[] calldata supplementalParameters
+    ) internal pure returns (uint256[] memory combinedParameters) {
+        combinedParameters = new uint256[](parameters.length);
+        uint256 errorBuffer = 0;
+        uint256 applicationRange = parameters.length.min(supplementalParameters.length);
+        for (uint256 i = 0; i < applicationRange; ++i) {
+            (uint256 duration, uint256 scalingFactor) =
+                getComponents(PriceCurveElement.wrap(parameters[i]));
+            uint256 supplementalScalingFactor = supplementalParameters[i];
+
+            errorBuffer |=
+                scalingFactor.sharesScalingDirection(supplementalScalingFactor).asUint256();
+
+            uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
+
+            combinedParameters[i] =
+                PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
+        }
+
+        if (errorBuffer != 0) {
+            revert InvalidPriceCurveParameters();
+        }
+
+        for (uint256 i = applicationRange; i < parameters.length; ++i) {
+            combinedParameters[i] = parameters[i];
+        }
     }
 
     /**
-     * @dev Calculate the current fill increase and claim decrease values based on block progression
+     * @dev Calculate the current scaling factor value based on block progression
      * @param parameters Array of DecayParameters to process sequentially
      * @param blocksPassed Number of blocks that have already passed
-     * @return currentFillIncrease The current fill increase value
-     * @return currentClaimDecrease The current claim decrease value
+     * @return currentScalingFactor The current scaling factor value
      */
-    function getCalculatedValues(uint256[] calldata parameters, uint256 blocksPassed)
+    function getCalculatedValues(uint256[] memory parameters, uint256 blocksPassed)
         internal
         pure
-        returns (uint256 currentFillIncrease, uint256 currentClaimDecrease)
+        returns (uint256 currentScalingFactor)
     {
         // Check if there are no parameters
         if (parameters.length == 0) {
-            return (0, 0);
+            return (1e18);
         }
 
         uint256 blocksCounted = 0;
@@ -120,21 +139,20 @@ library DecayParameterLib {
         // Process each parameter segment in a single pass
         for (uint256 i = 0; i < parameters.length; i++) {
             // Extract values from current parameter
-            (uint256 duration, uint256 fillIncrease, uint256 claimDecrease) =
-                getComponents(DecayParameter.wrap(parameters[i]));
+            (uint256 duration, uint256 scalingFactor) =
+                getComponents(PriceCurveElement.wrap(parameters[i]));
 
             // Special handling for zero duration
             if (duration == 0) {
                 // If we've reached or passed this zero duration point
                 if (blocksPassed >= blocksCounted) {
                     // Update values to the zero duration values
-                    currentFillIncrease = fillIncrease;
-                    currentClaimDecrease = claimDecrease;
+                    currentScalingFactor = scalingFactor;
                     hasPassedZeroDuration = true;
 
                     // If we're exactly at this point, return these values
                     if (blocksPassed == blocksCounted) {
-                        return (fillIncrease, claimDecrease);
+                        return scalingFactor;
                     }
                 }
 
@@ -147,66 +165,54 @@ library DecayParameterLib {
                 // For regular segments, we need to handle based on whether we've passed a zero duration
                 if (
                     hasPassedZeroDuration && i > 0
-                        && getBlockDuration(DecayParameter.wrap(parameters[i - 1])) == 0
+                        && getBlockDuration(PriceCurveElement.wrap(parameters[i - 1])) == 0
                 ) {
                     // We're in a segment right after a zero duration - start interpolation from zero duration values
-                    (, uint256 zeroDurationFill, uint256 zeroDurationClaim) =
-                        getComponents(DecayParameter.wrap(parameters[i - 1]));
+                    (, uint256 zeroDurationScalingFactor) =
+                        getComponents(PriceCurveElement.wrap(parameters[i - 1]));
+
+                    if (!zeroDurationScalingFactor.sharesScalingDirection(scalingFactor)) {
+                        revert InvalidPriceCurveParameters();
+                    }
 
                     // Interpolate from zero duration values to current segment values
-                    currentFillIncrease = _locateCurrentAmount(
-                        zeroDurationFill,
-                        fillIncrease,
+                    currentScalingFactor = _locateCurrentAmount(
+                        zeroDurationScalingFactor,
+                        scalingFactor,
                         blocksCounted,
                         blocksPassed,
                         blocksCounted + duration,
-                        true // Round up for fillIncrease
-                    );
-
-                    currentClaimDecrease = _locateCurrentAmount(
-                        zeroDurationClaim,
-                        claimDecrease,
-                        blocksCounted,
-                        blocksPassed,
-                        blocksCounted + duration,
-                        false // Round down for claimDecrease
+                        zeroDurationScalingFactor > 1e18 // Round up for fillIncrease, down for claimDecrease
                     );
                 } else {
                     // Standard interpolation between current and next segment
-                    uint256 endFillIncrease;
-                    uint256 endClaimDecrease;
+                    uint256 endScalingFactor;
 
                     if (i + 1 < parameters.length) {
                         // Next segment determines the target values
-                        (, endFillIncrease, endClaimDecrease) =
-                            getComponents(DecayParameter.wrap(parameters[i + 1]));
+                        (, endScalingFactor) =
+                            getComponents(PriceCurveElement.wrap(parameters[i + 1]));
                     } else {
                         // Last segment ends at zero
-                        endFillIncrease = 0;
-                        endClaimDecrease = 0;
+                        endScalingFactor = 0;
+                    }
+
+                    if (!scalingFactor.sharesScalingDirection(endScalingFactor)) {
+                        revert InvalidPriceCurveParameters();
                     }
 
                     // Use the provided interpolation function
-                    currentFillIncrease = _locateCurrentAmount(
-                        fillIncrease,
-                        endFillIncrease,
+                    currentScalingFactor = _locateCurrentAmount(
+                        scalingFactor,
+                        endScalingFactor,
                         blocksCounted,
                         blocksPassed,
                         blocksCounted + duration,
-                        true // Round up for fillIncrease
-                    );
-
-                    currentClaimDecrease = _locateCurrentAmount(
-                        claimDecrease,
-                        endClaimDecrease,
-                        blocksCounted,
-                        blocksPassed,
-                        blocksCounted + duration,
-                        false // Round down for claimDecrease
+                        scalingFactor > 1e18 // Round up for fillIncrease, down for claimDecrease
                     );
                 }
 
-                return (currentFillIncrease, currentClaimDecrease);
+                return (currentScalingFactor);
             }
 
             // We've passed this segment, update our tracking
@@ -215,11 +221,11 @@ library DecayParameterLib {
 
         // If we went through all segments and exceeded total blocks, revert
         if (blocksPassed >= blocksCounted) {
-            revert DecayBlocksExceeded();
+            revert PriceCurveBlocksExceeded();
         }
 
         // This should never be reached
-        return (0, 0);
+        return (0);
     }
 
     /**
@@ -294,5 +300,25 @@ library DecayParameterLib {
 
         // Return the original amount as startAmount == endAmount.
         return endAmount;
+    }
+
+    /**
+     * @notice Checks whether two values are on the same side of the threshold (1e18),
+     *         or if either value is exactly equal to 1e18.
+     * @dev Returns false only if one value is strictly less than 1e18 and the other strictly greater.
+     * @param a The first value to check.
+     * @param b The second value to check.
+     * @return result True if values are equal to 1e18 or both on the same side of it; false otherwise.
+     */
+    function sharesScalingDirection(uint256 a, uint256 b) internal pure returns (bool result) {
+        assembly {
+            let threshold := 1000000000000000000
+
+            result :=
+                or(
+                    or(eq(a, threshold), eq(b, threshold)), // either value is 1e18
+                    eq(gt(a, threshold), gt(b, threshold)) // both values are either greater or less than 1e18
+                )
+        }
     }
 }
