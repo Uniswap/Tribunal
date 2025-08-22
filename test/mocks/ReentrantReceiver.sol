@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 import {Tribunal} from "../../src/Tribunal.sol";
+import {ITribunal} from "../../src/interfaces/ITribunal.sol";
 import {Mandate, Fill, RecipientCallback, Adjustment} from "../../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
@@ -9,12 +10,12 @@ contract ReentrantReceiver {
     error NoProfit(uint256 balanceBefore, uint256 balanceAfter);
 
     Tribunal private immutable _TRIBUNAL;
-    Tribunal.BatchClaim private _claim;
+    ITribunal.BatchClaim private _claim;
     Mandate private _mandate;
 
     constructor(Tribunal _tribunal) payable {
         _TRIBUNAL = _tribunal;
-        _claim = Tribunal.BatchClaim({
+        _claim = ITribunal.BatchClaim({
             chainId: 1,
             compact: BatchCompact({
                 arbiter: address(this),

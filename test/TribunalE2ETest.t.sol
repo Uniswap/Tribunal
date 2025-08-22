@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
+import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {TheCompact} from "../lib/the-compact/src/TheCompact.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "../lib/the-compact/src/types/EIP712Types.sol";
@@ -108,7 +109,7 @@ contract MockBridge {
         bridgedToken.bridgeMint(tribunal, amount);
 
         // Call settleOrRegister on tribunal
-        Tribunal(tribunal).settleOrRegister(sourceClaimHash, compact, mandateHash, recipient);
+        Tribunal(tribunal).settleOrRegister(sourceClaimHash, compact, mandateHash, recipient, "");
     }
 }
 
@@ -411,7 +412,7 @@ contract TribunalE2ETest is Test {
         bridgedTokenChain2.approve(address(tribunalChain2), FILL_AMOUNT);
 
         // Create batch claim for Chain 2
-        Tribunal.BatchClaim memory batchClaim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory batchClaim = ITribunal.BatchClaim({
             chainId: CHAIN_1,
             compact: compact,
             sponsorSignature: "",

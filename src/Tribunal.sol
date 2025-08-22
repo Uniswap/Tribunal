@@ -16,6 +16,7 @@ import {IOnChainAllocation} from "the-compact/src/interfaces/IOnChainAllocation.
 import {BatchClaim as CompactBatchClaim} from "the-compact/src/types/BatchClaims.sol";
 import {BatchClaimComponent, Component} from "the-compact/src/types/Components.sol";
 import {ITribunalCallback} from "./interfaces/ITribunalCallback.sol";
+import {ITribunal} from "./interfaces/ITribunal.sol";
 import {Adjustment, Mandate, Fill, RecipientCallback} from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
 import {IRecipientCallback} from "./interfaces/IRecipientCallback.sol";
@@ -38,7 +39,7 @@ import {
  * and enforces that a single party is able to perform the fill in the event of a dispute.
  * @dev This contract is under active development; contributions, reviews, and feedback are greatly appreciated.
  */
-contract Tribunal is BlockNumberish {
+contract Tribunal is BlockNumberish, ITribunal {
     // ======== Libraries ========
     using ValidityLib for uint256;
     using FixedPointMathLib for uint256;
@@ -48,53 +49,6 @@ contract Tribunal is BlockNumberish {
     using PriceCurveLib for uint256;
     using SignatureCheckerLib for address;
     using DomainLib for bytes32;
-
-    // ======== Events ========
-    event CrossChainFill( // Claim chain
-        uint256 indexed chainId,
-        address indexed sponsor,
-        address indexed claimant,
-        bytes32 claimHash,
-        uint256 fillAmount,
-        uint256[] claimAmounts,
-        uint256 targetBlock
-    );
-
-    event SingleChainFill(
-        address indexed sponsor,
-        address indexed claimant,
-        bytes32 claimHash,
-        uint256 fillAmount,
-        uint256[] claimAmounts,
-        uint256 targetBlock
-    );
-
-    event Cancel(address indexed sponsor, bytes32 claimHash);
-
-    // ======== Custom Errors ========
-    error InvalidGasPrice();
-    error AlreadyClaimed();
-    error InvalidTargetBlockDesignation();
-    error InvalidTargetBlock(uint256 blockNumber, uint256 targetBlockNumber);
-    error NotSponsor();
-    error ReentrancyGuard();
-    error InvalidRecipientCallbackLength();
-    error ValidityConditionsNotMet();
-    error QuoteInapplicableToSameChainFills();
-    error InvalidFillBlock();
-    error InvalidAdjustment();
-    error InvalidFillHashArguments();
-    error InvalidRecipientCallback();
-    error InvalidChainId();
-    error InvalidCommitmentsArray();
-
-    // ======== Type Declarations ========
-    struct BatchClaim {
-        uint256 chainId; // Claim processing chain ID
-        BatchCompact compact;
-        bytes sponsorSignature; // Authorization from the sponsor
-        bytes allocatorSignature; // Authorization from the allocator
-    }
 
     // ======== Constants ========
     /// @notice keccak256("_REENTRANCY_GUARD_SLOT")
@@ -149,29 +103,12 @@ contract Tribunal is BlockNumberish {
 
     // ======== External Functions ========
 
-    /**
-     * @notice Returns the name of the contract.
-     * @return The name of the contract.
-     */
+    /// @inheritdoc ITribunal
     function name() external pure returns (string memory) {
         return "Tribunal";
     }
 
-    /**
-     * @notice Attempt to perform a fill.
-     * @param claim The claim parameters and constraints.
-     * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
-     * @param fillHashes An array of the hashes of each fill.
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
-     * @return claimHash The derived claim hash.
-     * @return mandateHash The derived mandate hash.
-     * @return fillAmount The amount of tokens to be filled.
-     * @return claimAmounts The amount of tokens to be claimed.
-     */
+    /// @inheritdoc ITribunal
     function fill(
         BatchClaim calldata claim,
         Fill calldata mandate,
@@ -217,11 +154,13 @@ contract Tribunal is BlockNumberish {
         );
     }
 
+    /// @inheritdoc ITribunal
     function settleOrRegister(
         bytes32 sourceClaimHash,
         BatchCompact calldata compact,
         bytes32 mandateHash,
-        address recipient
+        address recipient,
+        bytes calldata context
     ) external returns (bytes32 registeredClaimHash) {
         if (compact.commitments.length != 1) {
             revert InvalidCommitmentsArray();
@@ -298,7 +237,7 @@ contract Tribunal is BlockNumberish {
                 compact.expires,
                 COMPACT_TYPEHASH_WITH_MANDATE,
                 mandateHash,
-                LibBytes.emptyCalldata()
+                context
             );
 
             // deposit if mandateHash is zero
@@ -329,7 +268,7 @@ contract Tribunal is BlockNumberish {
                 compact.expires,
                 COMPACT_TYPEHASH_WITH_MANDATE,
                 mandateHash,
-                LibBytes.emptyCalldata()
+                context
             );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
@@ -348,6 +287,7 @@ contract Tribunal is BlockNumberish {
         return registeredClaimHash;
     }
 
+    /// @inheritdoc ITribunal
     function cancel(BatchClaim calldata claim, bytes32 mandateHash)
         external
         payable
@@ -364,6 +304,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
+    /// @inheritdoc ITribunal
     function cancelChainExclusive(BatchCompact calldata compact, bytes32 mandateHash)
         external
         nonReentrant
@@ -379,17 +320,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
-    /**
-     * @notice Get a quote for any native tokens supplied to pay for dispensation (i.e. cost to trigger settlement).
-     * @param claim The claim parameters and constraints.
-     * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param fillHashes An array of the hashes of each fill.
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
-     * @return dispensation The amount quoted to perform the dispensation.
-     */
+    /// @inheritdoc ITribunal
     function quote(
         BatchClaim calldata claim,
         Fill calldata mandate,
@@ -413,12 +344,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
-    /**
-     * @notice Get details about the expected compact witness.
-     * @return witnessTypeString The EIP-712 type string for the mandate.
-     * @return tokenArg The position of the token argument.
-     * @return amountArg The position of the amount argument.
-     */
+    /// @inheritdoc ITribunal
     function getCompactWitnessDetails()
         external
         pure
@@ -427,20 +353,12 @@ contract Tribunal is BlockNumberish {
         return (string.concat("Mandate(", WITNESS_TYPESTRING, ")"), 4, 5);
     }
 
-    /**
-     * @notice Check if a claim has been filled.
-     * @param claimHash The hash of the claim to check.
-     * @return The claimant account provided by the filler if the claim has been filled, or the sponsor if it is cancelled.
-     */
+    /// @inheritdoc ITribunal
     function filled(bytes32 claimHash) external view returns (address) {
         return _dispositions[claimHash];
     }
 
-    /**
-     * @notice Derives the mandate hash using EIP-712 typed data.
-     * @param mandate The mandate containing all hash parameters.
-     * @return The derived mandate hash.
-     */
+    /// @inheritdoc ITribunal
     function deriveMandateHash(Mandate calldata mandate) public view returns (bytes32) {
         return keccak256(
             abi.encode(MANDATE_TYPEHASH, mandate.adjuster, deriveFillsHash(mandate.fills))
@@ -463,11 +381,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
-    /**
-     * @notice Derives hash of an array of fills using EIP-712 typed data.
-     * @param fills The array of fills containing all hash parameters.
-     * @return The derived fills array hash.
-     */
+    /// @inheritdoc ITribunal
     function deriveFillsHash(Fill[] calldata fills) public view returns (bytes32) {
         bytes32[] memory fillHashes = new bytes32[](fills.length);
         for (uint256 i = 0; i < fills.length; ++i) {
@@ -476,11 +390,7 @@ contract Tribunal is BlockNumberish {
         return keccak256(abi.encodePacked(fillHashes));
     }
 
-    /**
-     * @notice Derives a fill hash using EIP-712 typed data.
-     * @param targetFill The fill containing all hash parameters.
-     * @return The derived fill hash.
-     */
+    /// @inheritdoc ITribunal
     function deriveFillHash(Fill calldata targetFill) public view returns (bytes32) {
         return keccak256(
             abi.encode(
@@ -500,11 +410,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
-    /**
-     * @notice Derives a recipient callback hash using EIP-712 typed data.
-     * @param recipientCallback The recipient callback array containing all hash parameters.
-     * @return The derived recipient callback hash.
-     */
+    /// @inheritdoc ITribunal
     function deriveRecipientCallbackHash(RecipientCallback[] calldata recipientCallback)
         public
         pure
@@ -564,12 +470,7 @@ contract Tribunal is BlockNumberish {
         );
     }
 
-    /**
-     * @notice Derives the claim hash from compact and mandate hash.
-     * @param compact The compact parameters.
-     * @param mandateHash The derived mandate hash.
-     * @return The claim hash.
-     */
+    /// @inheritdoc ITribunal
     function deriveClaimHash(BatchCompact calldata compact, bytes32 mandateHash)
         public
         pure
@@ -578,18 +479,7 @@ contract Tribunal is BlockNumberish {
         return _deriveClaimHash(compact, mandateHash, LOCK_TYPEHASH, COMPACT_TYPEHASH_WITH_MANDATE);
     }
 
-    /**
-     * @notice Derives fill and claim amounts based on mandate parameters and current conditions.
-     * @param maximumClaimAmounts The minimum claim amounts for each commitment.
-     * @param priceCurve The additional scaling factor to apply at each respective duration.
-     * @param targetBlock The block where the fill can first be performed.
-     * @param fillBlock The block where the fill is performed.
-     * @param minimumFillAmount The minimum fill amount.
-     * @param baselinePriorityFee The baseline priority fee in wei.
-     * @param scalingFactor The scaling factor to apply per priority fee wei above baseline.
-     * @return fillAmount The derived fill amount.
-     * @return claimAmounts The derived claim amounts.
-     */
+    /// @inheritdoc ITribunal
     function deriveAmounts(
         Lock[] calldata maximumClaimAmounts,
         uint256[] memory priceCurve,

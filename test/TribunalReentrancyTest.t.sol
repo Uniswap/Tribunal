@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
+import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {ReentrantReceiver} from "./mocks/ReentrantReceiver.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
@@ -65,7 +66,7 @@ contract TribunalReentrancyTest is Test, ITribunalCallback {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),

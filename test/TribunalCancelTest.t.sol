@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
+import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
@@ -54,7 +55,7 @@ contract TribunalCancelTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         // Make it cross-chain to test the AlreadyClaimed check
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
@@ -71,7 +72,7 @@ contract TribunalCancelTest is Test {
 
         vm.prank(sponsor);
         vm.expectEmit(true, false, false, false, address(tribunal));
-        emit Tribunal.Cancel(sponsor, claimHash);
+        emit ITribunal.Cancel(sponsor, claimHash);
         tribunal.cancel(claim, mandateHash);
 
         Adjustment memory adjustment = Adjustment({
@@ -161,7 +162,7 @@ contract TribunalCancelTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
@@ -198,7 +199,7 @@ contract TribunalCancelTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         // Make it cross-chain to avoid TheCompact mocking
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
@@ -264,7 +265,7 @@ contract TribunalCancelTest is Test {
         claimAmounts[0] = commitments[0].amount;
 
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit Tribunal.CrossChainFill(
+        emit ITribunal.CrossChainFill(
             claim.chainId,
             sponsor,
             address(this),
@@ -316,7 +317,7 @@ contract TribunalCancelTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
@@ -370,11 +371,11 @@ contract TribunalCancelTest is Test {
 
         vm.prank(sponsor);
         vm.expectEmit(true, false, false, false, address(tribunal));
-        emit Tribunal.Cancel(sponsor, claimHash);
+        emit ITribunal.Cancel(sponsor, claimHash);
         tribunal.cancelChainExclusive(compact, mandateHash);
 
         // Make it cross-chain to test the AlreadyClaimed check
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid + 1, // Different chain
             compact: compact,
             sponsorSignature: new bytes(0),
