@@ -109,7 +109,7 @@ contract MockBridge {
         bridgedToken.bridgeMint(tribunal, amount);
 
         // Call settleOrRegister on tribunal
-        Tribunal(tribunal).settleOrRegister(sourceClaimHash, compact, mandateHash, recipient);
+        Tribunal(tribunal).settleOrRegister(sourceClaimHash, compact, mandateHash, recipient, "");
     }
 }
 

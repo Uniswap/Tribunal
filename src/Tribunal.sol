@@ -159,7 +159,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes32 sourceClaimHash,
         BatchCompact calldata compact,
         bytes32 mandateHash,
-        address recipient
+        address recipient,
+        bytes calldata context
     ) external returns (bytes32 registeredClaimHash) {
         if (compact.commitments.length != 1) {
             revert InvalidCommitmentsArray();
@@ -236,7 +237,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 compact.expires,
                 COMPACT_TYPEHASH_WITH_MANDATE,
                 mandateHash,
-                LibBytes.emptyCalldata()
+                context
             );
 
             // deposit if mandateHash is zero
@@ -267,7 +268,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 compact.expires,
                 COMPACT_TYPEHASH_WITH_MANDATE,
                 mandateHash,
-                LibBytes.emptyCalldata()
+                context
             );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation

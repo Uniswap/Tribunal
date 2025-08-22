@@ -94,13 +94,15 @@ interface ITribunal {
      * @param compact The compact parameters to open a follow up order.
      * @param mandateHash The mandate hash of the follow up order.
      * @param recipient The recipient of the directly forwarded tokens.
+     * @param context The context forwarded to the allocator in an on chain allocation.
      * @return registeredClaimHash The hash of the registered claim from the follow up order.
      */
     function settleOrRegister(
         bytes32 sourceClaimHash,
         BatchCompact calldata compact,
         bytes32 mandateHash,
-        address recipient
+        address recipient,
+        bytes calldata context
     ) external returns (bytes32 registeredClaimHash);
 
     /**
