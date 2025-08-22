@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
+import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
@@ -68,7 +69,7 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
@@ -175,7 +176,7 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(token), amount: 1 ether});
 
-        Tribunal.BatchClaim memory claim = Tribunal.BatchClaim({
+        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
             chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
@@ -254,7 +255,7 @@ contract TribunalFillSuccessTest is Test, ITribunalCallback {
         claimAmounts[0] = commitments[0].amount;
 
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit Tribunal.SingleChainFill(
+        emit ITribunal.SingleChainFill(
             sponsor, address(this), claimHash, 100e18, claimAmounts, adjustment.targetBlock
         );
 
