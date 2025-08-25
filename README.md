@@ -87,6 +87,8 @@ struct RecipientCallback {
 }
 ```
 
+> Note: These structs represent the arguments that should be provided by the filler when processing a respective fill (with the exception of `Mandate`, where only a single `Fill` and an accompanying `fillHashes` array will be provided). The compact that is signed by the respective sponsor will contain the full EIP-712 payload with all nested structs fully visible; the sponsor may then selectively reveal the contents of those nested fields at the appropriate time, until which point only the respective hashes will be shared with fillers and other relevant parties.
+
 ### Process Flow
 
 1. Fillers initiate by calling `fill(BatchClaim calldata claim, Fill calldata mandate, address adjuster, Adjustment calldata adjustment, bytes calldata adjustmentAuthorization, bytes32[] calldata fillHashes, bytes32 claimant, uint256 fillBlock)` and providing any msg.value required for the settlement to pay to process the cross-chain message.
