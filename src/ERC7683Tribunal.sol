@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {LibBytes} from "solady/utils/LibBytes.sol";
 
-import {IDestinationSettler} from "./Interfaces/IDestinationSettler.sol";
+import {IDestinationSettler} from "./interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
 import {ITribunal} from "./interfaces/ITribunal.sol";
 import {Mandate, Fill, Adjustment} from "./types/TribunalStructs.sol";
