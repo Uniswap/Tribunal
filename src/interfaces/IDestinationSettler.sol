@@ -8,5 +8,7 @@ interface IDestinationSettler {
     /// @param orderId Unique order identifier for this order
     /// @param originData Data emitted on the origin to parameterize the fill
     /// @param fillerData Data provided by the filler to inform the fill or express their preferences
-    function fill(bytes32 orderId, bytes calldata originData, bytes calldata fillerData) external;
+    function fill(bytes32 orderId, bytes calldata originData, bytes calldata fillerData)
+        external
+        payable;
 }
