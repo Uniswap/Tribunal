@@ -161,7 +161,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes32 mandateHash,
         address recipient,
         bytes calldata context
-    ) external returns (bytes32 registeredClaimHash) {
+    ) external nonReentrant returns (bytes32 registeredClaimHash) {
         if (compact.commitments.length != 1) {
             revert InvalidCommitmentsArray();
         }
