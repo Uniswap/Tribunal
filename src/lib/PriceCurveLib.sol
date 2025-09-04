@@ -193,8 +193,10 @@ library PriceCurveLib {
                         (, endScalingFactor) =
                             getComponents(PriceCurveElement.wrap(parameters[i + 1]));
                     } else {
-                        // Last segment ends at zero
-                        endScalingFactor = 0;
+                        // Last segment ends at 1e18
+                        // For exact-in, defaults to decaying fill amount to minFillAmount that the sponsor is willing to accept
+                        // For exact-out, default to increasing claim amounts to maximumClaimAmounts that the sponsor is willing to pay
+                        endScalingFactor = 1e18;
                     }
 
                     if (!scalingFactor.sharesScalingDirection(endScalingFactor)) {
