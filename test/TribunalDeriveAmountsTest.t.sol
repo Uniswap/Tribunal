@@ -229,6 +229,40 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], expectedClaimAmount);
     }
 
+    function test_DeriveAmounts_WithPriceCurve_Dutch() public {
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        uint256 minimumFillAmount = 0.95 ether;
+        uint256 baselinePriorityFee = 0;
+        uint256 scalingFactor = 1e18;
+
+        uint256 targetBlock = vm.getBlockNumber();
+        uint256 fillBlock = targetBlock + 5;
+
+        uint256[] memory priceCurve = new uint256[](1);
+        priceCurve[0] = (10 << 240) | uint256(1.2e18);
+
+        (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        // With exact-in mode and price curve scaling down
+        // 5 blocks in, 10 blocks in segment
+        // Interpolating from 1.2 to 1 (last segment ends at 1e18)
+        // scalingMultiplier = 1.2 - (0.2 * 5/10) = 1.1
+        uint256 expectedScaling = 1.1e18;
+        assertEq(fillAmount, minimumFillAmount.mulWadUp(expectedScaling));
+
+        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
+    }
+
     function test_DeriveAmounts_WithPriceCurve_ReverseDutch() public {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
