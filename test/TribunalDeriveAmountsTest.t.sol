@@ -201,9 +201,10 @@ contract TribunalDeriveAmountsTest is Test {
         uint256 targetBlock = vm.getBlockNumber();
         uint256 fillBlock = targetBlock + 5;
 
-        uint256[] memory priceCurve = new uint256[](2);
+        uint256[] memory priceCurve = new uint256[](3);
         priceCurve[0] = (3 << 240) | uint256(8e17); // 0.8 * 10^18 (scaling down)
         priceCurve[1] = (10 << 240) | uint256(6e17); // 0.6 * 10^18 (scaling down more)
+        priceCurve[2] = (10 << 240) | uint256(0); // 0 * 10^18 (scaling down to 0)
 
         (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
             maximumClaimAmounts,
@@ -226,6 +227,127 @@ contract TribunalDeriveAmountsTest is Test {
         uint256 expectedScaling = 48e16; // 0.48 * 10^18
         uint256 expectedClaimAmount = maximumClaimAmounts[0].amount.mulWad(expectedScaling);
         assertEq(claimAmounts[0], expectedClaimAmount);
+    }
+
+    function test_DeriveAmounts_WithPriceCurve_Dutch() public {
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        uint256 minimumFillAmount = 0.95 ether;
+        uint256 baselinePriorityFee = 0;
+        uint256 scalingFactor = 1e18;
+
+        uint256 targetBlock = vm.getBlockNumber();
+        uint256 fillBlock = targetBlock + 5;
+
+        uint256[] memory priceCurve = new uint256[](1);
+        priceCurve[0] = (10 << 240) | uint256(1.2e18);
+
+        (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        // With exact-in mode and price curve scaling down
+        // 5 blocks in, 10 blocks in segment
+        // Interpolating from 1.2 to 1 (last segment ends at 1e18)
+        // scalingMultiplier = 1.2 - (0.2 * 5/10) = 1.1
+        uint256 expectedScaling = 1.1e18;
+        assertEq(fillAmount, minimumFillAmount.mulWadUp(expectedScaling));
+
+        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
+    }
+
+    function test_DeriveAmounts_WithPriceCurve_Dutch_nonNeutralEndScalingFactor() public {
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        uint256 minimumFillAmount = 0.95 ether;
+        uint256 baselinePriorityFee = 0;
+        uint256 scalingFactor = 1e18;
+
+        uint256 targetBlock = vm.getBlockNumber();
+        uint256 fillBlock = targetBlock + 5;
+
+        uint256[] memory priceCurve = new uint256[](2);
+        priceCurve[0] = (10 << 240) | uint256(1.2e18);
+        priceCurve[1] = (0 << 240) | uint256(1.1e18);
+
+        (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        // With exact-in mode and price curve scaling down
+        // 5 blocks in, 10 blocks in segment
+        // Interpolating from 1.2 to 1.1 (last segment ends at 1e18)
+        // scalingMultiplier = 1.2 - (0.1 * 5/10) = 1.05
+        uint256 expectedScaling = 1.15e18;
+        assertEq(fillAmount, minimumFillAmount.mulWadUp(expectedScaling));
+
+        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
+    }
+
+    function test_DeriveAmounts_WithPriceCurve_ReverseDutch() public {
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        uint256 minimumFillAmount = 0.95 ether;
+        uint256 baselinePriorityFee = 0;
+        uint256 scalingFactor = 1e18;
+
+        uint256 targetBlock = vm.getBlockNumber();
+
+        uint256[] memory priceCurve = new uint256[](2);
+        priceCurve[0] = (10 << 240) | uint256(8e17);
+        priceCurve[1] = (10 << 240) | uint256(1e18);
+
+        uint256 fillAmount;
+        uint256[] memory claimAmounts;
+
+        (fillAmount, claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            targetBlock + 5,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        // With exact-out mode and price curve scaling down
+        assertEq(fillAmount, minimumFillAmount); // Fill amount stays the same
+
+        // Calculate expected claim amount based on interpolation at block 5
+        // We're 5 blocks in, with segment ending at block 10
+        // Interpolating from 0.8 to 1
+        // scalingMultiplier = 0.8 + (0.2 * 5/10) = 0.9
+        uint256 expectedScaling = 9e17;
+        uint256 expectedClaimAmount = maximumClaimAmounts[0].amount.mulWad(expectedScaling);
+        assertEq(claimAmounts[0], expectedClaimAmount);
+
+        (fillAmount, claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            targetBlock + 15,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        assertEq(fillAmount, minimumFillAmount);
+        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
     }
 
     function test_DeriveAmounts_InvalidTargetBlockDesignation() public {
