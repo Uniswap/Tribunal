@@ -309,8 +309,8 @@ contract TribunalDeriveAmountsTest is Test {
         uint256 targetBlock = vm.getBlockNumber();
 
         uint256[] memory priceCurve = new uint256[](2);
-        priceCurve[0] = (10 << 240) | uint256(8e17); 
-        priceCurve[1] = (10 << 240) | uint256(1e18); 
+        priceCurve[0] = (10 << 240) | uint256(8e17);
+        priceCurve[1] = (10 << 240) | uint256(1e18);
 
         uint256 fillAmount;
         uint256[] memory claimAmounts;
