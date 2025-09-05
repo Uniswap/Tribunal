@@ -263,6 +263,41 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
     }
 
+    function test_DeriveAmounts_WithPriceCurve_Dutch_nonNeutralEndScalingFactor() public {
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
+
+        uint256 minimumFillAmount = 0.95 ether;
+        uint256 baselinePriorityFee = 0;
+        uint256 scalingFactor = 1e18;
+
+        uint256 targetBlock = vm.getBlockNumber();
+        uint256 fillBlock = targetBlock + 5;
+
+        uint256[] memory priceCurve = new uint256[](2);
+        priceCurve[0] = (10 << 240) | uint256(1.2e18);
+        priceCurve[1] = (0 << 240) | uint256(1.1e18);
+
+        (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            minimumFillAmount,
+            baselinePriorityFee,
+            scalingFactor
+        );
+
+        // With exact-in mode and price curve scaling down
+        // 5 blocks in, 10 blocks in segment
+        // Interpolating from 1.2 to 1.1 (last segment ends at 1e18)
+        // scalingMultiplier = 1.2 - (0.1 * 5/10) = 1.05
+        uint256 expectedScaling = 1.15e18;
+        assertEq(fillAmount, minimumFillAmount.mulWadUp(expectedScaling));
+
+        assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
+    }
+
     function test_DeriveAmounts_WithPriceCurve_ReverseDutch() public {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
