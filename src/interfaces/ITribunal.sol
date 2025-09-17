@@ -87,15 +87,15 @@ interface ITribunal {
         );
 
     /**
-     * @notice Settle or register a claim.
+     * @notice Settle or register a claim made against a compact on another chain.
      * @dev If filled, forwards the settle tokens to the filler
      * @dev If not filled, it can open a follow up order or forward the tokens directly to the recipient.
-     * @param sourceClaimHash The hash of the source claim.
-     * @param compact The compact parameters to open a follow up order.
-     * @param mandateHash The mandate hash of the follow up order.
+     * @param sourceClaimHash The claim hash of the source compact.
+     * @param compact The parameters to register a follow-up compact.
+     * @param mandateHash The mandate hash of the follow-up compact.
      * @param recipient The recipient of the directly forwarded tokens.
-     * @param context The context forwarded to the allocator in an on chain allocation.
-     * @return registeredClaimHash The hash of the registered claim from the follow up order.
+     * @param context The context forwarded to the allocator in an onchain allocation.
+     * @return registeredClaimHash The hash of the newly-registered compact.
      */
     function settleOrRegister(
         bytes32 sourceClaimHash,
@@ -103,7 +103,7 @@ interface ITribunal {
         bytes32 mandateHash,
         address recipient,
         bytes calldata context
-    ) external returns (bytes32 registeredClaimHash);
+    ) external payable returns (bytes32 registeredClaimHash);
 
     /**
      * @notice Cancel a claim. Will mark the order as filled.

@@ -161,7 +161,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes32 mandateHash,
         address recipient,
         bytes calldata context
-    ) external nonReentrant returns (bytes32 registeredClaimHash) {
+    ) external payable nonReentrant returns (bytes32 registeredClaimHash) {
         if (compact.commitments.length != 1) {
             revert InvalidCommitmentsArray();
         }
@@ -169,7 +169,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         address claimant = _dispositions[sourceClaimHash];
 
-        // An available claimant indicates a fill, transfer the tokens to the claimant
+        // An available claimant indicates a fill, transfer all available tokens to the claimant
         if (claimant != address(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
@@ -190,10 +190,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         // An empty lockTag indicates a direct transfer
         if (commitment.lockTag == bytes12(0)) {
             if (commitment.token == address(0)) {
-                // Handle native token
+                // Handle native token (transfer full available balance)
                 SafeTransferLib.safeTransferETH(recipient, address(this).balance);
             } else {
-                // Handle ERC20 tokens
+                // Handle ERC20 tokens (transfer full available balance)
                 commitment.token.safeTransferAll(recipient);
             }
             return bytes32(0);
@@ -201,11 +201,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Prepare the ids and amounts, dependent on the actual balance
         uint256[2][] memory idsAndAmounts = new uint256[2][](1);
+        uint256 callValue = 0;
         idsAndAmounts[0][0] =
             uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
         if (compact.commitments[0].token == address(0)) {
             // Handle native token
-            idsAndAmounts[0][1] = address(this).balance;
+            callValue = address(this).balance;
+            idsAndAmounts[0][1] = callValue;
         } else {
             // Handle ERC20 tokens
             idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
@@ -218,7 +220,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+            ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
                 idsAndAmounts, recipient
             );
             return bytes32(0);
@@ -242,13 +244,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
             // deposit if mandateHash is zero
             if (mandateHash == bytes32(0)) {
-                ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+                ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
                     idsAndAmounts, recipient
                 );
             } else {
                 // deposit and register the tokens
                 (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                    value: address(this).balance
+                    value: callValue
                 }(
                     compact.sponsor,
                     idsAndAmounts,
