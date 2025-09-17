@@ -190,7 +190,7 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], expectedClaimAmount);
     }
 
-    function test_DeriveAmounts_WithPriceCurve() public {
+    function test_DeriveAmounts_WithPriceCurve() public view {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -229,7 +229,7 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], expectedClaimAmount);
     }
 
-    function test_DeriveAmounts_WithPriceCurve_Dutch() public {
+    function test_DeriveAmounts_WithPriceCurve_Dutch() public view {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -263,7 +263,7 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
     }
 
-    function test_DeriveAmounts_WithPriceCurve_Dutch_nonNeutralEndScalingFactor() public {
+    function test_DeriveAmounts_WithPriceCurve_Dutch_nonNeutralEndScalingFactor() public view {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
@@ -298,7 +298,7 @@ contract TribunalDeriveAmountsTest is Test {
         assertEq(claimAmounts[0], maximumClaimAmounts[0].amount);
     }
 
-    function test_DeriveAmounts_WithPriceCurve_ReverseDutch() public {
+    function test_DeriveAmounts_WithPriceCurve_ReverseDutch() public view {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
