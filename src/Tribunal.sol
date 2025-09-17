@@ -603,8 +603,9 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         uint256 validBlockWindow = uint256(adjustment.validityConditions) >> 160;
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
+        // A validBlockWindow of 1 means it must be filled on the target block
         if (
-            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow > fillBlock)).or(
+            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow >= fillBlock)).or(
                 validFiller != msg.sender
             )
         ) {
