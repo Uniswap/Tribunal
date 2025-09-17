@@ -911,7 +911,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256[] memory claimAmounts;
         (fillAmount, claimAmounts) = deriveAmounts(
             compact.commitments,
-            mandate.priceCurve,
+            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
             fillBlock,
             mandate.minimumFillAmount,
