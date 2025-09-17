@@ -502,7 +502,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 currentScalingFactor = 1e18;
         if (targetBlock != 0) {
             if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(targetBlock, fillBlock);
+                revert InvalidTargetBlock(fillBlock, targetBlock);
             }
             // Derive the total blocks passed since the target block.
             uint256 blocksPassed;
