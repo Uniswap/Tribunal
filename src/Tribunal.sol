@@ -367,14 +367,22 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
     }
 
-    // Note: consider shortening this array by one word like on The Compact with exogenous claims
+    /**
+     * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
+     * and the index of the target fill in the array.
+     * @param targetFill The fill being executed.
+     * @param adjuster The adjuster address.
+     * @param fillIndex The index of the target fill in the fillHashes array.
+     * @param fillHashes The array of fill hashes.
+     * @return The derived mandate hash.
+     */
     function _deriveMandateHash(
         Fill calldata targetFill,
         address adjuster,
         uint256 fillIndex,
         bytes32[] calldata fillHashes
     ) internal view returns (bytes32) {
-        if (fillIndex > fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
+        if (fillIndex >= fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
             revert InvalidFillHashArguments();
         }
 
