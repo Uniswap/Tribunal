@@ -3,6 +3,11 @@ pragma solidity ^0.8.27;
 
 import {BatchCompact} from "../types/TribunalStructs.sol";
 
+/**
+ * @title IRecipientCallback
+ * @notice Interface for contracts that can receive callbacks from Tribunal after same-chain fills.
+ * @dev Implementers must return the correct function selector to confirm successful execution.
+ */
 interface IRecipientCallback {
     /**
      * @notice Callback function to be called by the Tribunal contract to the recipient.

@@ -59,6 +59,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
     // ======== Immutables ========
+    /// @notice The Compact contract instance used for processing claims against resource locks.
     ITheCompactClaims public immutable theCompact;
 
     // Chain ID at deployment, used for triggering EIP-712 domain separator updates.
