@@ -276,7 +276,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
             (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                value: address(this).balance
+                value: callValue
             }(
                 compact.sponsor,
                 idsAndAmounts,
@@ -614,7 +614,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
         // A validBlockWindow of 1 means it must be filled on the target block
         if (
-            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow >= fillBlock)).or(
+            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock)).or(
                 validFiller != msg.sender
             )
         ) {
