@@ -174,7 +174,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         if (claimant != address(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
-                SafeTransferLib.safeTransferETH(claimant, address(this).balance);
+                SafeTransferLib.safeTransferAllETH(claimant);
             } else {
                 // Handle ERC20 tokens
                 commitment.token.safeTransferAll(claimant);
@@ -192,7 +192,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         if (commitment.lockTag == bytes12(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token (transfer full available balance)
-                SafeTransferLib.safeTransferETH(recipient, address(this).balance);
+                SafeTransferLib.safeTransferAllETH(recipient);
             } else {
                 // Handle ERC20 tokens (transfer full available balance)
                 commitment.token.safeTransferAll(recipient);
