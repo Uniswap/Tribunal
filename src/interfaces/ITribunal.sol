@@ -4,9 +4,24 @@ pragma solidity ^0.8.28;
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {Fill, Adjustment, Mandate, RecipientCallback} from "../types/TribunalStructs.sol";
 
+/**
+ * @title ITribunal
+ * @notice Interface for the Tribunal contract that handles cross-chain swap settlements.
+ * @dev Provides methods for filling, cancelling, and querying cross-chain orders with dynamic pricing.
+ */
 interface ITribunal {
     // ======== Events ========
-    event CrossChainFill( // Claim chain
+    /**
+     * @notice Emitted when a cross-chain fill is successfully executed.
+     * @param chainId The chain ID where the claim will be processed.
+     * @param sponsor The address that created the compact to be claimed.
+     * @param claimant The address that will receive tokens on the claim chain.
+     * @param claimHash The hash of the compact being claimed.
+     * @param fillAmount The amount of tokens filled on the destination chain.
+     * @param claimAmounts The amounts of tokens to be claimed on the source chain.
+     * @param targetBlock The target block number for the fill.
+     */
+    event CrossChainFill(
         uint256 indexed chainId,
         address indexed sponsor,
         address indexed claimant,
@@ -16,6 +31,15 @@ interface ITribunal {
         uint256 targetBlock
     );
 
+    /**
+     * @notice Emitted when a single-chain fill is successfully executed.
+     * @param sponsor The address that created the compact to be claimed.
+     * @param claimant The address that receives the tokens and optionally a callback.
+     * @param claimHash The hash of the compact being claimed.
+     * @param fillAmount The amount of tokens filled.
+     * @param claimAmounts The amounts of tokens claimed.
+     * @param targetBlock The target block number for the fill.
+     */
     event SingleChainFill(
         address indexed sponsor,
         address indexed claimant,
@@ -25,6 +49,11 @@ interface ITribunal {
         uint256 targetBlock
     );
 
+    /**
+     * @notice Emitted when a compact is cancelled by its sponsor.
+     * @param sponsor The address that cancelled the compact.
+     * @param claimHash The hash of the cancelled compact.
+     */
     event Cancel(address indexed sponsor, bytes32 claimHash);
 
     // ======== Custom Errors ========
@@ -87,15 +116,15 @@ interface ITribunal {
         );
 
     /**
-     * @notice Settle or register a claim.
+     * @notice Settle or register a claim made against a compact on another chain.
      * @dev If filled, forwards the settle tokens to the filler
      * @dev If not filled, it can open a follow up order or forward the tokens directly to the recipient.
-     * @param sourceClaimHash The hash of the source claim.
-     * @param compact The compact parameters to open a follow up order.
-     * @param mandateHash The mandate hash of the follow up order.
+     * @param sourceClaimHash The claim hash of the source compact.
+     * @param compact The parameters to register a follow-up compact.
+     * @param mandateHash The mandate hash of the follow-up compact.
      * @param recipient The recipient of the directly forwarded tokens.
-     * @param context The context forwarded to the allocator in an on chain allocation.
-     * @return registeredClaimHash The hash of the registered claim from the follow up order.
+     * @param context The context forwarded to the allocator in an onchain allocation.
+     * @return registeredClaimHash The hash of the newly-registered compact.
      */
     function settleOrRegister(
         bytes32 sourceClaimHash,
@@ -103,7 +132,7 @@ interface ITribunal {
         bytes32 mandateHash,
         address recipient,
         bytes calldata context
-    ) external returns (bytes32 registeredClaimHash);
+    ) external payable returns (bytes32 registeredClaimHash);
 
     /**
      * @notice Cancel a claim. Will mark the order as filled.
@@ -233,5 +262,9 @@ interface ITribunal {
         uint256 scalingFactor
     ) external view returns (uint256 fillAmount, uint256[] memory claimAmounts);
 
+    /**
+     * @notice Returns the name of this contract.
+     * @return The contract name.
+     */
     function name() external pure returns (string memory);
 }

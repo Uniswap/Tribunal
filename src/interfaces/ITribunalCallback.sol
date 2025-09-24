@@ -3,15 +3,23 @@ pragma solidity ^0.8.27;
 
 import {Lock} from "the-compact/src/types/EIP712Types.sol";
 
+/**
+ * @title ITribunalCallback
+ * @notice Interface for filler contracts that can receive callbacks from Tribunal during single-chain fills.
+ * @dev Called after claiming tokens from The Compact but before transferring fill tokens to the recipient and
+ * potentially triggering a recipient callback.
+ */
 interface ITribunalCallback {
-    /// @notice Callback function to be called by the Tribunal contract to the filler.
-    /// @dev At this point, the filler has received the fillToken with an amount of actualFillAmount.
-    /// @param claimHash The claim hash of the associated compact that has been claimed.
-    /// @param commitments The commitments that need to be filled.
-    /// @param claimedAmounts The actual amounts required to complete the fill.
-    /// @param fillToken The reward token of the fill.
-    /// @param minimumFillAmount The minimum fill amount that was offered.
-    /// @param actualFillAmount The actual fill amount that is provided.
+    /**
+     * @notice Callback function to be called by the Tribunal contract to the filler.
+     * @dev At this point, the filler has received the fillToken with an amount of actualFillAmount.
+     * @param claimHash The claim hash of the associated compact that has been claimed.
+     * @param commitments The resource lock commitments provided by the sponsor.
+     * @param claimedAmounts The actual amounts required to complete the fill.
+     * @param fillToken The reward token of the fill.
+     * @param minimumFillAmount The minimum fill amount that was offered.
+     * @param actualFillAmount The actual fill amount that is provided.
+     */
     function tribunalCallback(
         bytes32 claimHash,
         Lock[] calldata commitments,
