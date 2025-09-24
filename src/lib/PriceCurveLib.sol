@@ -164,7 +164,7 @@ library PriceCurveLib {
             if (blocksPassed < blocksCounted + duration) {
                 // For regular segments, we need to handle based on whether we've passed a zero duration
                 if (
-                    hasPassedZeroDuration && i > 0
+                    hasPassedZeroDuration
                         && getBlockDuration(PriceCurveElement.wrap(parameters[i - 1])) == 0
                 ) {
                     // We're in a segment right after a zero duration - start interpolation from zero duration values
