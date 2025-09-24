@@ -100,7 +100,7 @@ library PriceCurveLib {
             uint256 supplementalScalingFactor = supplementalParameters[i];
 
             errorBuffer |=
-                scalingFactor.sharesScalingDirection(supplementalScalingFactor).asUint256();
+                (!scalingFactor.sharesScalingDirection(supplementalScalingFactor)).asUint256();
 
             uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
 

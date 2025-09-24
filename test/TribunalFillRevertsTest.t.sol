@@ -111,8 +111,8 @@ contract TribunalFillRevertsTest is Test {
         vm.expectRevert(
             abi.encodeWithSignature(
                 "InvalidTargetBlock(uint256,uint256)",
-                vm.getBlockNumber() + 100,
-                vm.getBlockNumber()
+                vm.getBlockNumber(),
+                vm.getBlockNumber() + 100
             )
         );
         tribunal.fill{value: 1 ether}(

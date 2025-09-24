@@ -59,6 +59,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
     // ======== Immutables ========
+    /// @notice The Compact contract instance used for processing claims against resource locks.
     ITheCompactClaims public immutable theCompact;
 
     // Chain ID at deployment, used for triggering EIP-712 domain separator updates.
@@ -161,7 +162,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes32 mandateHash,
         address recipient,
         bytes calldata context
-    ) external nonReentrant returns (bytes32 registeredClaimHash) {
+    ) external payable nonReentrant returns (bytes32 registeredClaimHash) {
         if (compact.commitments.length != 1) {
             revert InvalidCommitmentsArray();
         }
@@ -169,7 +170,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         address claimant = _dispositions[sourceClaimHash];
 
-        // An available claimant indicates a fill, transfer the tokens to the claimant
+        // An available claimant indicates a fill, transfer all available tokens to the claimant
         if (claimant != address(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
@@ -190,10 +191,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         // An empty lockTag indicates a direct transfer
         if (commitment.lockTag == bytes12(0)) {
             if (commitment.token == address(0)) {
-                // Handle native token
+                // Handle native token (transfer full available balance)
                 SafeTransferLib.safeTransferETH(recipient, address(this).balance);
             } else {
-                // Handle ERC20 tokens
+                // Handle ERC20 tokens (transfer full available balance)
                 commitment.token.safeTransferAll(recipient);
             }
             return bytes32(0);
@@ -201,11 +202,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Prepare the ids and amounts, dependent on the actual balance
         uint256[2][] memory idsAndAmounts = new uint256[2][](1);
+        uint256 callValue = 0;
         idsAndAmounts[0][0] =
             uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
         if (compact.commitments[0].token == address(0)) {
             // Handle native token
-            idsAndAmounts[0][1] = address(this).balance;
+            callValue = address(this).balance;
+            idsAndAmounts[0][1] = callValue;
         } else {
             // Handle ERC20 tokens
             idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
@@ -218,7 +221,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+            ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
                 idsAndAmounts, recipient
             );
             return bytes32(0);
@@ -242,13 +245,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
             // deposit if mandateHash is zero
             if (mandateHash == bytes32(0)) {
-                ITheCompact(address(theCompact)).batchDeposit{value: address(this).balance}(
+                ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
                     idsAndAmounts, recipient
                 );
             } else {
                 // deposit and register the tokens
                 (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                    value: address(this).balance
+                    value: callValue
                 }(
                     compact.sponsor,
                     idsAndAmounts,
@@ -273,7 +276,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
             (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                value: address(this).balance
+                value: callValue
             }(
                 compact.sponsor,
                 idsAndAmounts,
@@ -365,14 +368,22 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
     }
 
-    // Note: consider shortening this array by one word like on The Compact with exogenous claims
+    /**
+     * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
+     * and the index of the target fill in the array.
+     * @param targetFill The fill being executed.
+     * @param adjuster The adjuster address.
+     * @param fillIndex The index of the target fill in the fillHashes array.
+     * @param fillHashes The array of fill hashes.
+     * @return The derived mandate hash.
+     */
     function _deriveMandateHash(
         Fill calldata targetFill,
         address adjuster,
         uint256 fillIndex,
         bytes32[] calldata fillHashes
     ) internal view returns (bytes32) {
-        if (fillIndex > fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
+        if (fillIndex >= fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
             revert InvalidFillHashArguments();
         }
 
@@ -492,7 +503,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 currentScalingFactor = 1e18;
         if (targetBlock != 0) {
             if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(targetBlock, fillBlock);
+                revert InvalidTargetBlock(fillBlock, targetBlock);
             }
             // Derive the total blocks passed since the target block.
             uint256 blocksPassed;
@@ -601,8 +612,9 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         uint256 validBlockWindow = uint256(adjustment.validityConditions) >> 160;
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
+        // A validBlockWindow of 1 means it must be filled on the target block
         if (
-            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow > fillBlock)).or(
+            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock)).or(
                 validFiller != msg.sender
             )
         ) {
@@ -900,7 +912,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256[] memory claimAmounts;
         (fillAmount, claimAmounts) = deriveAmounts(
             compact.commitments,
-            mandate.priceCurve,
+            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
             fillBlock,
             mandate.minimumFillAmount,

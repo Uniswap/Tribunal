@@ -193,7 +193,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             // originData
             claim := encodedClaim.offset
             mandate := encodedFill.offset
-            adjuster := encodedAdjuster
+            adjuster := shr(0x60, shl(0x60, encodedAdjuster))
             fillHashes.offset := encodedFillHashes.offset
             fillHashes.length := encodedFillHashes.length
 
