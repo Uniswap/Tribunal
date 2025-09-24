@@ -227,6 +227,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             return bytes32(0);
         }
 
+        // An empty nonce indicates an onchain allocator; wrap registration in prepare & execute hooks.
         if (compact.nonce == 0) {
             // Do an on chain allocation if no nonce is provided
             (, address allocator,,,) =
@@ -243,25 +244,18 @@ contract Tribunal is BlockNumberish, ITribunal {
                 context
             );
 
-            // deposit if mandateHash is zero
-            if (mandateHash == bytes32(0)) {
-                ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
-                    idsAndAmounts, recipient
-                );
-            } else {
-                // deposit and register the tokens
-                (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                    value: callValue
-                }(
-                    compact.sponsor,
-                    idsAndAmounts,
-                    compact.arbiter,
-                    nonce,
-                    compact.expires,
-                    COMPACT_TYPEHASH_WITH_MANDATE,
-                    mandateHash
-                );
-            }
+            // deposit and register the tokens
+            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+                value: callValue
+            }(
+                compact.sponsor,
+                idsAndAmounts,
+                compact.arbiter,
+                nonce,
+                compact.expires,
+                COMPACT_TYPEHASH_WITH_MANDATE,
+                mandateHash
+            );
 
             // execute the allocation
             IOnChainAllocation(allocator).executeAllocation(
