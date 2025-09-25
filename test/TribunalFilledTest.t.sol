@@ -24,7 +24,7 @@ contract TribunalFilledTest is Test {
 
     function setUp() public {
         theCompact = address(0xC0);
-        tribunal = new Tribunal(theCompact);
+        tribunal = new Tribunal();
         (sponsor,) = makeAddrAndKey("sponsor");
         (adjuster, adjusterPrivateKey) = makeAddrAndKey("adjuster");
 

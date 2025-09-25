@@ -19,7 +19,7 @@ contract TribunalDeriveAmountsTest is Test {
 
     function setUp() public {
         theCompact = address(0xC0);
-        tribunal = new Tribunal(theCompact);
+        tribunal = new Tribunal();
 
         emptyPriceCurve = new uint256[](0);
     }

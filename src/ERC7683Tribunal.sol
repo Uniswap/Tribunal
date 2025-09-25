@@ -13,7 +13,7 @@ import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
 contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     // ======== Constructor ========
-    constructor(address compact) Tribunal(compact) {}
+    constructor() Tribunal() {}
 
     // ======== External Functions ========
     /**

@@ -63,9 +63,11 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     uint256 private constant _ADDRESS_BITS = 0xa0;
 
-    // ======== Immutables ========
     /// @notice The Compact contract instance used for processing claims against resource locks.
-    ITheCompactClaims public immutable theCompact;
+    ITheCompactClaims public constant THE_COMPACT =
+        ITheCompactClaims(0x00000000000000171ede64904551eeDF3C6C9788);
+
+    // ======== Immutables ========
 
     // Chain ID at deployment, used for triggering EIP-712 domain separator updates.
     uint256 private immutable _INITIAL_CHAIN_ID;
@@ -94,12 +96,10 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Constructor that assigns the address of The Compact and initializes immutable variables,
+     * @notice Constructor that initializes immutable variables,
      * capturing the initial chain ID and domain separator.
      */
-    constructor(address theCompact_) {
-        theCompact = ITheCompactClaims(theCompact_);
-
+    constructor() {
         _INITIAL_CHAIN_ID = block.chainid;
         _INITIAL_DOMAIN_SEPARATOR = DomainLib.toCurrentDomainSeparator();
     }
@@ -214,14 +214,14 @@ contract Tribunal is BlockNumberish, ITribunal {
             idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
             if (_checkCompactAllowance(commitment.token, address(this)) < idsAndAmounts[0][1]) {
                 SafeTransferLib.safeApproveWithRetry(
-                    commitment.token, address(theCompact), type(uint256).max
+                    commitment.token, address(THE_COMPACT), type(uint256).max
                 );
             }
         }
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
+            ITheCompact(address(THE_COMPACT)).batchDeposit{value: callValue}(
                 idsAndAmounts, recipient
             );
             return bytes32(0);
@@ -231,7 +231,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         if (compact.nonce == 0) {
             // Do an on chain allocation if no nonce is provided
             (, address allocator,,,) =
-                ITheCompact(address(theCompact)).getLockDetails(idsAndAmounts[0][0]);
+                ITheCompact(address(THE_COMPACT)).getLockDetails(idsAndAmounts[0][0]);
 
             // Prepare the allocation with the allocator
             (uint256 nonce) = IOnChainAllocation(allocator).prepareAllocation(
@@ -245,7 +245,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
 
             // deposit and register the tokens
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -269,7 +269,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -761,7 +761,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 component.portions[0].amount = claimAmounts[i];
                 claim.claims[i] = component;
             }
-            claimHash = theCompact.batchClaim(claim);
+            claimHash = THE_COMPACT.batchClaim(claim);
         }
 
         // Do a callback to the sender
@@ -930,7 +930,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         view
         returns (uint256 amount)
     {
-        address compact = address(theCompact);
+        address compact = address(THE_COMPACT);
         assembly ("memory-safe") {
             mstore(0x14, owner) // Store the `owner` argument.
             mstore(0x34, compact)
