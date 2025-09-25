@@ -254,11 +254,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
         tribunal.fill(
             order.orderId,
             abi.encode(
-                _getClaim(),
-                mandate.fills[0],
-                mandate.adjuster,
-                fillHashes,
-                1 /* invalid input */
+                _getClaim(), mandate.fills[0], mandate.adjuster, fillHashes, 1 /* invalid input */
             ),
             fillerData
         );

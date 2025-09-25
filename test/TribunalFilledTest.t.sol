@@ -134,9 +134,7 @@ contract TribunalFilledTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
-        tribunal.fill{
-            value: 1 ether
-        }(
+        tribunal.fill{value: 1 ether}(
             claim,
             fill,
             adjuster,

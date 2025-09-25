@@ -5,7 +5,10 @@ import {TheCompact} from "../../lib/the-compact/src/TheCompact.sol";
 import {Test} from "forge-std/Test.sol";
 
 interface ImmutableCreate2Factory {
-    function safeCreate2(bytes32 salt, bytes calldata initCode) external payable returns (address);
+    function safeCreate2(bytes32 salt, bytes calldata initCode)
+        external
+        payable
+        returns (address);
 }
 
 contract DeployTheCompact is Test {
@@ -18,8 +21,9 @@ contract DeployTheCompact is Test {
         // deploy TheCompact using immutable create2 factory
         bytes32 salt = bytes32(0x0000000000000000000000000000000000000000b2b9e37543ed52144ec37e0c);
         TheCompact theCompact = TheCompact(
-            ImmutableCreate2Factory(immutableCreate2Factory)
-                .safeCreate2(salt, type(TheCompact).creationCode)
+            ImmutableCreate2Factory(immutableCreate2Factory).safeCreate2(
+                salt, type(TheCompact).creationCode
+            )
         );
 
         // Verify the deployment address matches the expected constant

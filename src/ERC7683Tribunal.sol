@@ -80,7 +80,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             Fill calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
-            Adjustment calldata adjustment,,
+            Adjustment calldata adjustment,
+            ,
             bytes32 claimant,
             uint256 fillBlock
         ) = _parseCalldata(originData, fillerData);

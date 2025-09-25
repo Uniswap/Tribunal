@@ -64,9 +64,7 @@ contract ReentrantReceiver {
             block.number
         );
         uint256 balanceBefore = address(this).balance;
-        try _TRIBUNAL.fill{
-            value: quote
-        }(
+        try _TRIBUNAL.fill{value: quote}(
             _claim,
             _mandate.fills[0],
             address(this),

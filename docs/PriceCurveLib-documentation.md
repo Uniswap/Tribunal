@@ -161,11 +161,22 @@ priceCurve[0] = (100 << 240) | uint256(1e18); // Neutral scaling
 ```solidity
 priceCurve[0] = (10 << 240) | uint256(1.2e18);
 priceCurve[1] = (0 << 240) | uint256(1.5e18);   // First zero-duration
-priceCurve[2] = (0 << 240) | uint256(1.3e18);   // Second zero-duration (ignored)
+priceCurve[2] = (0 << 240) | uint256(1.3e18);   // Second zero-duration 
 priceCurve[3] = (10 << 240) | uint256(1e18);
 ```
 
-**Behavior**: Only the FIRST zero-duration element at a given block count is used (subsequent ones are ignored)
+**Behavior**: 
+- **At the exact block count (block 10)**: Only the FIRST zero-duration element (1.5e18) is returned
+- **For subsequent interpolation (blocks 11-20)**: The LAST zero-duration element (1.3e18) is used as the starting point for interpolation to the next segment
+
+**Example Timeline**:
+```
+Block 0-9:   Interpolate from 1.2x to 1.5x
+Block 10:    Returns exactly 1.5x (first zero-duration element)
+Block 11-20: Interpolate from 1.3x (last zero-duration) to 1.0x
+```
+
+This design allows complex price curves where the instantaneous price point (first zero-duration) can differ from the starting point for the next interpolation phase (last zero-duration).
 
 ### 6. Invalid Configurations
 
