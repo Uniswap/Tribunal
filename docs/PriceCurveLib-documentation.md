@@ -214,7 +214,7 @@ priceCurve[3] = (50 << 240) | uint256(1e18);    // Final decay to 1.0x
 // Blocks 0-49: Interpolate from 1.5x down to 1.2x
 // Block 50: Drop to exactly 1.2x (zero-duration element)
 // Blocks 51-100: Stay at 1.2x (plateau - segment 2 matches zero-duration value)
-// Blocks 101-150: Interpolate from 1.0x (segment 3) to 1.0x (final value)
+// Blocks 101-150: Remain at 1.0x (segment 3 holds at minimum price)
 ```
 
 **Note**: When a zero-duration element has the same value as the next segment, it creates a true plateau where the value stays constant.
