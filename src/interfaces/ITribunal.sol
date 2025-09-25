@@ -248,7 +248,7 @@ interface ITribunal {
 
     /**
      * @notice Derives fill and claim amounts based on mandate parameters and current conditions.
-     * @param maximumClaimAmounts The minimum claim amounts for each commitment.
+     * @param maximumClaimAmounts The maximum claim amounts for each commitment.
      * @param priceCurve The additional scaling factor to apply at each respective duration.
      * @param targetBlock The block where the fill can first be performed.
      * @param fillBlock The block where the fill is performed.
