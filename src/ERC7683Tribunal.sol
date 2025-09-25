@@ -114,7 +114,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock
-    ) internal pure returns (bytes memory fillerData) {
+    ) external pure returns (bytes memory fillerData) {
         fillerData = abi.encode(adjustment, adjustmentAuthorization, claimant, fillBlock);
     }
 
