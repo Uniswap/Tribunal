@@ -24,7 +24,7 @@ pragma solidity ^0.8.28;
                 fillToken: TARGET_CHAIN_USDC,
                 minimumFillAmount: 10_017_500,
                 baselinePriorityFee; 1_000_000_000,
-                scalingFactor; 0x00000x0002000000000000000000000000000000000000000000000de0b6b3a7640005,
+                scalingFactor; 0x00000000000000000000000000000000000000000000000000000de0b6b3a7640005,
                 priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640002, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640001]
                 recipient: SWAPPER,
                 recipientCallback: [],
@@ -36,8 +36,8 @@ pragma solidity ^0.8.28;
                 expires; SAME_CHAIN_FILL_EXPIRATION,
                 fillToken: ETH,
                 minimumFillAmount: 2_404_400_000_000_000,
-                baselinePriorityFee; 0,
-                scalingFactor; 0,
+                baselinePriorityFee: 0,
+                scalingFactor: 0x00000000000000000000000000000000000000000000000000000de0b6b3a7640000,
                 priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640005, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640003]
                 recipient: ACROSS_ADAPTER,
                 recipientCallback: [
@@ -65,7 +65,7 @@ pragma solidity ^0.8.28;
                                         fillToken: TARGET_CHAIN_USDC,
                                         minimumFillAmount: 10_010_000,
                                         baselinePriorityFee; 1_000_000_000,
-                                        scalingFactor; 0x00000x0002000000000000000000000000000000000000000000000de0b6b3a7640005,
+                                        scalingFactor; 0x00000000000000000000000000000000000000000000000000000de0b6b3a7640005,
                                         priceCurve: [0x0002000000000000000000000000000000000000000000000de0b6b3a7640002, 0x0003000000000000000000000000000000000000000000000de0b6b3a7640001]
                                         recipient: SWAPPER,
                                         recipientCallback: [],

@@ -58,6 +58,9 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @notice Base scaling factor (1e18).
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
+    bytes32 private constant _EMPTY_HASH =
+        0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
+
     // ======== Immutables ========
     /// @notice The Compact contract instance used for processing claims against resource locks.
     ITheCompactClaims public immutable theCompact;
@@ -345,9 +348,16 @@ contract Tribunal is BlockNumberish, ITribunal {
     function getCompactWitnessDetails()
         external
         pure
-        returns (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg)
+        returns (string memory witnessTypeString, ArgDetail[] memory details)
     {
-        return (string.concat("Mandate(", WITNESS_TYPESTRING, ")"), 4, 5);
+        witnessTypeString = string.concat("Mandate(", WITNESS_TYPESTRING, ")");
+
+        details = new ArgDetail[](1);
+        details[0] = ArgDetail({
+            tokenPath: "fills[].fillToken",
+            argPath: "fills[].minimumFillAmount",
+            description: "Output token and minimum amount for each fill in the Fills array"
+        });
     }
 
     /// @inheritdoc ITribunal
@@ -422,8 +432,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         returns (bytes32)
     {
         if (recipientCallback.length == 0) {
-            // empty hash
-            return 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
+            return _EMPTY_HASH;
         } else if (recipientCallback.length != 1) {
             revert InvalidRecipientCallbackLength();
         }

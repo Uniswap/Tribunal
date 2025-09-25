@@ -81,6 +81,12 @@ interface ITribunal {
         bytes allocatorSignature; // Authorization from the allocator
     }
 
+    struct ArgDetail {
+        string tokenPath;
+        string argPath;
+        string description;
+    }
+
     /**
      * @notice Attempt to perform a fill.
      * @param claim The claim parameters and constraints.
@@ -183,13 +189,12 @@ interface ITribunal {
     /**
      * @notice Get details about the expected compact witness.
      * @return witnessTypeString The EIP-712 type string for the mandate.
-     * @return tokenArg The position of the token argument.
-     * @return amountArg The position of the amount argument.
+     * @return details An array of argument details for tokens and amounts.
      */
     function getCompactWitnessDetails()
         external
         pure
-        returns (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg);
+        returns (string memory witnessTypeString, ArgDetail[] memory details);
 
     /**
      * @notice Check if a claim has been filled.
