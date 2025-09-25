@@ -197,9 +197,9 @@ contract TribunalE2ETest is DeployTheCompact {
         Tribunal tribunalChain2Temp = new Tribunal{salt: 0}();
         BridgedToken bridgedTokenChain2Temp = new BridgedToken{salt: 0}();
         TestRecipientCallback recipientCallbackTemp = new TestRecipientCallback{salt: 0}();
-        MockBridge bridgeTemp = new MockBridge{salt: 0}(
-            payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp)
-        );
+        MockBridge bridgeTemp = new MockBridge{
+            salt: 0
+        }(payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp));
 
         // Grant bridge role to the bridge and to this test contract (for setup)
         bridgedTokenChain2Temp.grantBridgeRole(address(bridgeTemp));
@@ -414,18 +414,15 @@ contract TribunalE2ETest is DeployTheCompact {
 
         // Create batch claim for Chain 2
         ITribunal.BatchClaim memory batchClaim = ITribunal.BatchClaim({
-            chainId: CHAIN_1,
-            compact: compact,
-            sponsorSignature: "",
-            allocatorSignature: ""
+            chainId: CHAIN_1, compact: compact, sponsorSignature: "", allocatorSignature: ""
         });
 
         // Execute the cross-chain fill
         (
-            bytes32 returnedClaimHash,
-            , // bytes32 returnedMandateHash
-            uint256 fillAmount,
+            bytes32 returnedClaimHash, // bytes32 returnedMandateHash
             // uint256[] memory claimAmounts
+            ,
+            uint256 fillAmount,
         ) = tribunalChain2.fill(
             batchClaim,
             fills[0],

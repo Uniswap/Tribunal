@@ -30,7 +30,8 @@ contract TribunalBasicTest is Test {
     bytes32 constant MANDATE_LOCK_TYPEHASH =
         keccak256("Mandate_Lock(bytes12 lockTag,address token,uint256 amount)");
 
-    bytes32 constant LOCK_TYPEHASH = keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
+    bytes32 constant LOCK_TYPEHASH =
+        keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
 
     receive() external payable {}
 

@@ -115,7 +115,9 @@ contract TribunalFillRevertsTest is Test {
                 vm.getBlockNumber() + 100
             )
         );
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -242,7 +244,9 @@ contract TribunalFillRevertsTest is Test {
         bytes memory adjustmentSignature = signAdjustment(adjustment, claimHash, adjusterPrivateKey);
 
         // Send ETH with the first fill
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -254,7 +258,9 @@ contract TribunalFillRevertsTest is Test {
         );
 
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,

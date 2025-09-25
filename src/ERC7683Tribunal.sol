@@ -80,8 +80,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             Fill calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
-            Adjustment calldata adjustment,
-            ,
+            Adjustment calldata adjustment,,
             bytes32 claimant,
             uint256 fillBlock
         ) = _parseCalldata(originData, fillerData);
@@ -157,7 +156,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          *  - 5 words for lengths of dynamics (assuming empty).
          *  - 2 words for fillHashes length & at least a single word for fill hash.
          * Also ensure no funny business with the claim pointer (should be 0x80).
-         * 
+         *
          * Need 10 words in fillerData at minimum:
          *  - 1 word for offset to adjustment (dynamic struct).
          *  - 1 word for offset to adjustmentAuthorization.

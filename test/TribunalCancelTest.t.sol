@@ -123,7 +123,9 @@ contract TribunalCancelTest is Test {
 
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -275,7 +277,9 @@ contract TribunalCancelTest is Test {
             adjustment.targetBlock
         );
 
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -430,7 +434,9 @@ contract TribunalCancelTest is Test {
 
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,

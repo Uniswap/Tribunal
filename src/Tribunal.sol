@@ -204,8 +204,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Prepare the ids and amounts, dependent on the actual balance
         uint256[2][] memory idsAndAmounts = new uint256[2][](1);
         uint256 callValue = 0;
-        idsAndAmounts[0][0] =
-            uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
+        idsAndAmounts[0][0] = uint256(bytes32(commitment.lockTag))
+            | uint256(uint160(commitment.token));
         if (compact.commitments[0].token == address(0)) {
             // Handle native token
             callValue = address(this).balance;
@@ -222,9 +222,8 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(THE_COMPACT)).batchDeposit{value: callValue}(
-                idsAndAmounts, recipient
-            );
+            ITheCompact(address(THE_COMPACT))
+            .batchDeposit{value: callValue}(idsAndAmounts, recipient);
             return bytes32(0);
         }
 
@@ -235,18 +234,20 @@ contract Tribunal is BlockNumberish, ITribunal {
                 ITheCompact(address(THE_COMPACT)).getLockDetails(idsAndAmounts[0][0]);
 
             // Prepare the allocation with the allocator
-            (uint256 nonce) = IOnChainAllocation(allocator).prepareAllocation(
-                compact.sponsor,
-                idsAndAmounts,
-                compact.arbiter,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash,
-                context
-            );
+            (uint256 nonce) = IOnChainAllocation(allocator)
+                .prepareAllocation(
+                    compact.sponsor,
+                    idsAndAmounts,
+                    compact.arbiter,
+                    compact.expires,
+                    COMPACT_TYPEHASH_WITH_MANDATE,
+                    mandateHash,
+                    context
+                );
 
             // deposit and register the tokens
-            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT))
+            .batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -259,18 +260,20 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
 
             // execute the allocation
-            IOnChainAllocation(allocator).executeAllocation(
-                compact.sponsor,
-                idsAndAmounts, // The allocator will retrieve the actual amounts from the balance change, so we don't need to update the amounts
-                compact.arbiter,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash,
-                context
-            );
+            IOnChainAllocation(allocator)
+                .executeAllocation(
+                    compact.sponsor,
+                    idsAndAmounts, // The allocator will retrieve the actual amounts from the balance change, so we don't need to update the amounts
+                    compact.arbiter,
+                    compact.expires,
+                    COMPACT_TYPEHASH_WITH_MANDATE,
+                    mandateHash,
+                    context
+                );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT))
+            .batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -376,9 +379,10 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /// @inheritdoc ITribunal
     function deriveMandateHash(Mandate calldata mandate) public view returns (bytes32) {
-        return keccak256(
-            abi.encode(MANDATE_TYPEHASH, mandate.adjuster, deriveFillsHash(mandate.fills))
-        );
+        return
+            keccak256(
+                abi.encode(MANDATE_TYPEHASH, mandate.adjuster, deriveFillsHash(mandate.fills))
+            );
     }
 
     /// @inheritdoc ITribunal
@@ -451,9 +455,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
         // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR).or(
-            scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
-        );
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
+        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
 
         if (useExactIn) {
             // For exact-in, increase fill amount and use maximum claim amounts.
@@ -580,11 +583,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 validBlockWindow = uint256(adjustment.validityConditions) >> _ADDRESS_BITS;
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
         // A validBlockWindow of 1 means it must be filled on the target block
-        if (
-            ((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock)).or(
-                validFiller != msg.sender
-            )
-        ) {
+        if (((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock))
+            .or(validFiller != msg.sender)) {
             revert ValidityConditionsNotMet();
         }
 
@@ -615,12 +615,10 @@ contract Tribunal is BlockNumberish, ITribunal {
             adjustment
         );
 
-        if (
-            !adjuster.isValidSignatureNow(
+        if (!adjuster.isValidSignatureNow(
                 _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
                 adjustmentAuthorization
-            )
-        ) {
+            )) {
             revert InvalidAdjustment();
         }
 
@@ -714,16 +712,17 @@ contract Tribunal is BlockNumberish, ITribunal {
         if (mandate.recipientCallback.length != 0) {
             RecipientCallback calldata callback = mandate.recipientCallback[0];
             if (
-                IRecipientCallback(mandate.recipient).tribunalCallback(
-                    callback.chainId,
-                    claimHash,
-                    mandateHash,
-                    mandate.fillToken,
-                    fillAmount,
-                    callback.compact,
-                    callback.mandateHash,
-                    callback.context
-                ) != IRecipientCallback.tribunalCallback.selector
+                IRecipientCallback(mandate.recipient)
+                        .tribunalCallback(
+                            callback.chainId,
+                            claimHash,
+                            mandateHash,
+                            mandate.fillToken,
+                            fillAmount,
+                            callback.compact,
+                            callback.mandateHash,
+                            callback.context
+                        ) != IRecipientCallback.tribunalCallback.selector
             ) {
                 revert InvalidRecipientCallback();
             }
@@ -766,14 +765,15 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Do a callback to the sender
-        ITribunalCallback(msg.sender).tribunalCallback(
-            claimHash,
-            compact.commitments,
-            claimAmounts,
-            mandate.fillToken,
-            mandate.minimumFillAmount,
-            fillAmount
-        );
+        ITribunalCallback(msg.sender)
+            .tribunalCallback(
+                claimHash,
+                compact.commitments,
+                claimAmounts,
+                mandate.fillToken,
+                mandate.minimumFillAmount,
+                fillAmount
+            );
 
         return claimHash;
     }
@@ -936,14 +936,13 @@ contract Tribunal is BlockNumberish, ITribunal {
             mstore(0x14, owner) // Store the `owner` argument.
             mstore(0x34, compact)
             mstore(0x00, 0xdd62ed3e000000000000000000000000) // `allowance(address,address)`.
-            amount :=
-                mul( // The arguments of `mul` are evaluated from right to left.
-                    mload(0x20),
-                    and( // The arguments of `and` are evaluated from right to left.
-                        gt(returndatasize(), 0x1f), // At least 32 bytes returned.
-                        staticcall(gas(), token, 0x10, 0x44, 0x20, 0x20)
-                    )
+            amount := mul( // The arguments of `mul` are evaluated from right to left.
+                mload(0x20),
+                and( // The arguments of `and` are evaluated from right to left.
+                    gt(returndatasize(), 0x1f), // At least 32 bytes returned.
+                    staticcall(gas(), token, 0x10, 0x44, 0x20, 0x20)
                 )
+            )
             mstore(0x34, 0)
         }
     }
