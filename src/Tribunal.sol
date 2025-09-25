@@ -61,6 +61,8 @@ contract Tribunal is BlockNumberish, ITribunal {
     bytes32 private constant _EMPTY_HASH =
         0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
 
+    uint256 private constant _ADDRESS_BITS = 0xa0;
+
     // ======== Immutables ========
     /// @notice The Compact contract instance used for processing claims against resource locks.
     ITheCompactClaims public immutable theCompact;
@@ -503,7 +505,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 baselinePriorityFee,
         uint256 scalingFactor
     ) public view returns (uint256 fillAmount, uint256[] memory claimAmounts) {
-        uint256 currentScalingFactor = 1e18;
+        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
         if (targetBlock != 0) {
             if (targetBlock > fillBlock) {
                 revert InvalidTargetBlock(fillBlock, targetBlock);
@@ -533,14 +535,15 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
-        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor
-        bool useExactIn =
-            (scalingFactor > 1e18).or(scalingFactor == 1e18 && currentScalingFactor >= 1e18);
+        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR).or(
+            scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
+        );
 
         if (useExactIn) {
             // For exact-in, increase fill amount and use maximum claim amounts.
-            scalingMultiplier =
-                currentScalingFactor + ((scalingFactor - 1e18) * priorityFeeAboveBaseline);
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount.mulWadUp(scalingMultiplier);
             // Copy maximum claim amounts unchanged
             for (uint256 i = 0; i < claimAmounts.length; i++) {
@@ -548,8 +551,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             }
         } else {
             // For exact-out, decrease claim amount.
-            scalingMultiplier =
-                currentScalingFactor - ((1e18 - scalingFactor) * priorityFeeAboveBaseline);
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount;
             // Apply scaling to maximum claim amounts
             for (uint256 i = 0; i < claimAmounts.length; i++) {
@@ -613,7 +616,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             validFiller := xor(validFiller, mul(iszero(validFiller), caller()))
         }
 
-        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> 160;
+        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> _ADDRESS_BITS;
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
         // A validBlockWindow of 1 means it must be filled on the target block
         if (
