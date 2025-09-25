@@ -2,6 +2,7 @@
 pragma solidity ^0.8.28;
 
 /// @title IDestinationSettler
+/// @custom:security-contact security@uniswap.org
 /// @notice Standard interface for settlement contracts on the destination chain
 interface IDestinationSettler {
     /// @notice Fills a single leg of a particular order on the destination chain

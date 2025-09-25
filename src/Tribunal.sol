@@ -34,6 +34,7 @@ import {
 /**
  * @title Tribunal
  * @author 0age
+ * @custom:security-contact security@uniswap.org
  * @notice Tribunal is a framework for processing cross-chain swap settlements against PGA (priority gas auction)
  * blockchains. It ensures that tokens are transferred according to the mandate specified by the originating sponsor
  * and enforces that a single party is able to perform the fill in the event of a dispute.

@@ -12,6 +12,7 @@ type PriceCurveElement is uint256;
 
 /**
  * @title PriceCurveLib
+ * @custom:security-contact security@uniswap.org
  * @dev Library for the DecayParameter type which packs three values:
  *      - blockDuration (16 bits): Duration in blocks
  *      - scalingFactor (240 bits): additional scaling factor to apply to fill increase or claim decrease

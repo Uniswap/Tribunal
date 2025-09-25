@@ -6,6 +6,7 @@ import {Fill, Adjustment, Mandate, RecipientCallback} from "../types/TribunalStr
 
 /**
  * @title ITribunal
+ * @custom:security-contact security@uniswap.org
  * @notice Interface for the Tribunal contract that handles cross-chain swap settlements.
  * @dev Provides methods for filling, cancelling, and querying cross-chain orders with dynamic pricing.
  */

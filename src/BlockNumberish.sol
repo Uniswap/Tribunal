@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IArbSys} from "./interfaces/IArbSys.sol";
 
 /// @title BlockNumberish
+/// @custom:security-contact security@uniswap.org
 /// A helper contract to get the current block number on different chains
 contract BlockNumberish {
     uint256 private constant ARB_CHAIN_ID = 42161;

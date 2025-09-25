@@ -10,6 +10,7 @@ import {Mandate, Fill, Adjustment} from "./types/TribunalStructs.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 /// @title ERC7683Tribunal
+/// @custom:security-contact security@uniswap.org
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
 contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     // ======== Constructor ========

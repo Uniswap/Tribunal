@@ -5,6 +5,7 @@ import {BatchCompact} from "../types/TribunalStructs.sol";
 
 /**
  * @title IRecipientCallback
+ * @custom:security-contact security@uniswap.org
  * @notice Interface for contracts that can receive callbacks from Tribunal after same-chain fills.
  * @dev Implementers must return the correct function selector to confirm successful execution.
  */

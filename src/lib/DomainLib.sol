@@ -3,6 +3,7 @@ pragma solidity ^0.8.27;
 
 /**
  * @title DomainLib
+ * @custom:security-contact security@uniswap.org
  * @notice Library contract implementing logic for deriving domain hashes.
  */
 library DomainLib {
