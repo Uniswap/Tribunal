@@ -7,6 +7,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {PriceCurveTestHelper} from "./helpers/PriceCurveTestHelper.sol";
 
 contract PriceCurveEdgeCasesTest is Test {
     using FixedPointMathLib for uint256;
@@ -14,6 +15,7 @@ contract PriceCurveEdgeCasesTest is Test {
 
     Tribunal public tribunal;
     address theCompact;
+    PriceCurveTestHelper public helper;
 
     uint256[] public emptyPriceCurve;
 
@@ -22,6 +24,7 @@ contract PriceCurveEdgeCasesTest is Test {
     function setUp() public {
         theCompact = address(0xC0);
         tribunal = new Tribunal(theCompact);
+        helper = new PriceCurveTestHelper();
 
         emptyPriceCurve = new uint256[](0);
     }
@@ -192,7 +195,7 @@ contract PriceCurveEdgeCasesTest is Test {
 
     function test_LinearDecay_DutchAuction() public pure {
         uint256[] memory priceCurve = new uint256[](1);
-        priceCurve[0] = (100 << 240) | uint256(0.8e18); // 0.8x scaling
+        priceCurve[0] = (100 << 240) | uint256(0.8e18); // 100 blocks total duration
 
         // At block 0: should be 0.8
         assertEq(priceCurve.getCalculatedValues(0), 0.8e18);
@@ -201,19 +204,29 @@ contract PriceCurveEdgeCasesTest is Test {
         uint256 scalingAtBlock50 = priceCurve.getCalculatedValues(50);
         assertEq(scalingAtBlock50, 0.9e18);
 
-        // At block 99: should be close to 1.0
+        // At block 99: should be close to 1.0 (last valid block)
         uint256 scalingAtBlock99 = priceCurve.getCalculatedValues(99);
         // Expected: 0.8 + (1.0 - 0.8) * (99/100) = 0.998
         assertApproxEqRel(scalingAtBlock99, 0.998e18, 0.001e18);
     }
 
+    function test_LinearDecay_DutchAuction_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](1);
+        priceCurve[0] = (100 << 240) | uint256(0.8e18); // 100 blocks total duration
+
+        // At block 100: should revert (exceeds total duration)
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 100);
+    }
+
     function test_StepFunctionWithPlateaus() public pure {
         uint256[] memory priceCurve = new uint256[](3);
-        priceCurve[0] = (50 << 240) | uint256(1.5e18); // High price for 50 blocks
-        priceCurve[1] = (50 << 240) | uint256(1.2e18); // Drop to 1.2x for 50 blocks
-        priceCurve[2] = (50 << 240) | uint256(1e18); // Final decay to 1.0x
+        priceCurve[0] = (50 << 240) | uint256(1.5e18); // 50 blocks
+        priceCurve[1] = (50 << 240) | uint256(1.2e18); // 50 blocks
+        priceCurve[2] = (50 << 240) | uint256(1e18); // 50 blocks
+        // Total duration: 150 blocks
 
-        // During first plateau (block 25)
+        // During first segment (block 25)
         uint256 scalingAtBlock25 = priceCurve.getCalculatedValues(25);
         // Should interpolate from 1.5 towards 1.2
         // Expected: 1.5 - (1.5 - 1.2) * (25/50) = 1.35
@@ -235,11 +248,27 @@ contract PriceCurveEdgeCasesTest is Test {
         uint256 scalingAtBlock100 = priceCurve.getCalculatedValues(100);
         // Expected: 1.0 - (1.0 - 1.0) * (0/50) = 1.0
         assertEq(scalingAtBlock100, 1e18);
+
+        // At block 149 (last valid block)
+        uint256 scalingAtBlock149 = priceCurve.getCalculatedValues(149);
+        assertEq(scalingAtBlock149, 1e18);
+    }
+
+    function test_StepFunctionWithPlateaus_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](3);
+        priceCurve[0] = (50 << 240) | uint256(1.5e18); // 50 blocks
+        priceCurve[1] = (50 << 240) | uint256(1.2e18); // 50 blocks
+        priceCurve[2] = (50 << 240) | uint256(1e18); // 50 blocks
+        // Total duration: 150 blocks
+
+        // At block 150: should revert (exceeds total duration)
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 150);
     }
 
     function test_InvertedAuction_PriceIncreasesOverTime() public pure {
         uint256[] memory priceCurve = new uint256[](1);
-        priceCurve[0] = (100 << 240) | uint256(0.5e18); // Start at 0.5x
+        priceCurve[0] = (100 << 240) | uint256(0.5e18); // 100 blocks total duration
 
         // Price should increase from 0.5x to 1x over 100 blocks
         assertEq(priceCurve.getCalculatedValues(0), 0.5e18);
@@ -247,11 +276,21 @@ contract PriceCurveEdgeCasesTest is Test {
         assertApproxEqRel(priceCurve.getCalculatedValues(99), 0.995e18, 0.001e18);
     }
 
+    function test_InvertedAuction_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](1);
+        priceCurve[0] = (100 << 240) | uint256(0.5e18); // 100 blocks total duration
+
+        // At block 100: should revert (exceeds total duration)
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 100);
+    }
+
     function test_ComplexMultiPhaseCurve() public pure {
         uint256[] memory priceCurve = new uint256[](3);
-        priceCurve[0] = (30 << 240) | uint256(1.5e18); // Start at 1.5x
-        priceCurve[1] = (40 << 240) | uint256(1.3e18); // Drop to 1.3x at block 30
-        priceCurve[2] = (30 << 240) | uint256(1.1e18); // Drop to 1.1x at block 70
+        priceCurve[0] = (30 << 240) | uint256(1.5e18); // 30 blocks
+        priceCurve[1] = (40 << 240) | uint256(1.3e18); // 40 blocks
+        priceCurve[2] = (30 << 240) | uint256(1.1e18); // 30 blocks
+        // Total duration: 30 + 40 + 30 = 100 blocks
 
         // Block 15: interpolating from 1.5 to 1.3
         uint256 scalingAtBlock15 = priceCurve.getCalculatedValues(15);
@@ -267,6 +306,23 @@ contract PriceCurveEdgeCasesTest is Test {
         uint256 scalingAtBlock85 = priceCurve.getCalculatedValues(85);
         // Expected: 1.1 - (1.1 - 1.0) * (15/30) = 1.05
         assertEq(scalingAtBlock85, 1.05e18);
+
+        // At block 99: last valid block
+        uint256 scalingAtBlock99 = priceCurve.getCalculatedValues(99);
+        // Expected: 1.1 - (1.1 - 1.0) * (29/30) ≈ 1.0033
+        assertApproxEqRel(scalingAtBlock99, 1.0033e18, 0.001e18);
+    }
+
+    function test_ComplexMultiPhaseCurve_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](3);
+        priceCurve[0] = (30 << 240) | uint256(1.5e18); // 30 blocks
+        priceCurve[1] = (40 << 240) | uint256(1.3e18); // 40 blocks
+        priceCurve[2] = (30 << 240) | uint256(1.1e18); // 30 blocks
+        // Total duration: 30 + 40 + 30 = 100 blocks
+
+        // At block 100: should revert (exceeds total duration)
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 100);
     }
 
     // ============ Auction Duration and Validity Window ============
@@ -301,18 +357,14 @@ contract PriceCurveEdgeCasesTest is Test {
         assertEq(fillAmount, uint256(1 ether).mulWadUp(1.2e18));
     }
 
-    function test_PriceCurveShorterThanValidityWindow() public view {
+    function test_PriceCurveShorterThanValidityWindow() public {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
         maximumClaimAmounts[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         uint256[] memory priceCurve = new uint256[](1);
-        priceCurve[0] = (30 << 240) | uint256(1.5e18); // 30 block curve
+        priceCurve[0] = (30 << 240) | uint256(1.5e18); // 30 block total duration
 
-        // validBlockWindow = 50 (longer than price curve)
-        // Price curve ends at block 30, but auction valid until block 50
-
-        // At block 35 (after price curve ends)
-        // Should use final value (1e18) since curve has ended
+        // Test at block 29: last valid block of the curve
         (uint256 fillAmount,) = tribunal.deriveAmounts(
             maximumClaimAmounts,
             priceCurve,
@@ -326,6 +378,18 @@ contract PriceCurveEdgeCasesTest is Test {
         // At block 29: close to 1e18 (end of interpolation)
         // Expected: 1.5 - (1.5 - 1.0) * (29/30) ≈ 1.0167
         assertApproxEqRel(fillAmount, uint256(1 ether).mulWadUp(1.0167e18), 0.01e18);
+
+        // At block 30: should revert (exceeds curve duration)
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        tribunal.deriveAmounts(
+            maximumClaimAmounts,
+            priceCurve,
+            100, // targetBlock
+            130, // fillBlock (30 blocks after target, exceeds 30-block curve)
+            1 ether,
+            0,
+            1e18
+        );
     }
 
     // ============ Supplemental Price Curves ============

@@ -32,6 +32,8 @@ Within each segment, the system linearly interpolates between:
 - The segment's starting scaling factor
 - The next segment's scaling factor (or 1e18 if it's the last segment)
 
+**Important**: The total auction duration is the sum of all segment durations. Attempting to access the curve beyond this total will revert with `PriceCurveBlocksExceeded`.
+
 ## Auction Duration and Timing
 
 ### Auction Lifecycle
@@ -83,16 +85,20 @@ targetBlock = 100
 validBlockWindow = 50
 Price curve total duration = 30 blocks
 
-Block 99:  Cannot fill (InvalidTargetBlock)
+Block 99:  Cannot fill (InvalidTargetBlock - before targetBlock)
 Block 100: Auction begins, price at curve start
-Block 130: Price curve ends (reaches 1e18), but auction still valid
-Block 149: Last valid block (if validBlockWindow = 50)
-Block 150: Cannot fill (ValidityConditionsNotMet)
+Block 129: Last block of price curve (block 29 of curve)
+Block 130: Cannot fill (PriceCurveBlocksExceeded - beyond curve duration)
+Block 149: Would be last valid block per window, but already failed at 130
+Block 150: Would fail with ValidityConditionsNotMet if curve was longer
 ```
 
-**Important**: The price curve and validity window operate independently:
-- Price curve can be shorter than validity window (price stays at final value)
-- Price curve cannot be longer than validity window (would revert with PriceCurveBlocksExceeded)
+**Important**: The price curve duration and validity window interact as follows:
+- The price curve duration (sum of all segment durations) defines when the curve ends
+- After the curve ends, any attempt to fill reverts with `PriceCurveBlocksExceeded`
+- The validity window can be longer than the price curve (but fills would fail after curve ends)
+- The validity window can be shorter than the price curve (fills fail after validity window)
+- For successful fills, you need BOTH: within price curve duration AND within validity window
 
 ## Edge Cases and Special Behaviors
 
@@ -179,12 +185,6 @@ priceCurve[0] = (10 << 240) | uint256(1.5e18);  // Increase (>1e18)
 priceCurve[1] = (10 << 240) | uint256(0.5e18);  // Decrease (<1e18) - INVALID!
 ```
 
-#### c. Mixed Scaling Directions
-```solidity
-// All segments must be on the same side of 1e18
-// Cannot mix exact-in (>1e18) and exact-out (<1e18) scaling factors
-```
-
 ## Common Price Curve Patterns
 
 ### 1. Linear Decay (Dutch Auction Style)
@@ -193,7 +193,12 @@ priceCurve[1] = (10 << 240) | uint256(0.5e18);  // Decrease (<1e18) - INVALID!
 // Price increases linearly from 0.8x to 1.0x over 100 blocks
 uint256[] memory priceCurve = new uint256[](1);
 priceCurve[0] = (100 << 240) | uint256(8e17); // 0.8x scaling
-// Automatically interpolates to 1e18 (1.0x) at the end
+
+// Timeline:
+// Blocks 0-99: Interpolate from 0.8x to 1.0x (1e18)
+// Block 100+: Reverts with PriceCurveBlocksExceeded
+
+// Total auction duration: 100 blocks (sum of all segment durations)
 ```
 
 ### 2. Step Function with Plateaus
@@ -218,18 +223,29 @@ priceCurve[3] = (50 << 240) | uint256(1e18);    // Final decay to 1.0x
 
 ```solidity
 uint256[] memory priceCurve = new uint256[](2);
-priceCurve[0] = (10 << 240) | uint256(5e17);   // Start at 0.5x (50% discount)
-priceCurve[1] = (90 << 240) | uint256(9e17);   // Quickly rise to 0.9x
-// Then gradually approach 1.0x
+priceCurve[0] = (10 << 240) | uint256(5e17);   // Start at 0.5x for 10 blocks
+priceCurve[1] = (90 << 240) | uint256(9e17);   // Then 0.9x for 90 blocks
+
+// Timeline:
+// Blocks 0-9: Interpolate from 0.5x to 0.9x
+// Blocks 10-99: Interpolate from 0.9x to 1.0x (1e18)
+// Block 100+: Reverts with PriceCurveBlocksExceeded
+
+// Total auction duration: 100 blocks (10 + 90)
 ```
 
 ### 4. Reverse Dutch Auction
 
 ```solidity
-// Price starts high and decreases over time (regardless of mode)
+// Price starts high and decreases over time
 uint256[] memory priceCurve = new uint256[](1);
-priceCurve[0] = (200 << 240) | uint256(2e18);   // Start at 2x
-// Interpolates down to 1x over 200 blocks
+priceCurve[0] = (200 << 240) | uint256(2e18);   // Start at 2x for 200 blocks
+
+// Timeline:
+// Blocks 0-199: Interpolate from 2x down to 1x (1e18)
+// Block 200+: Reverts with PriceCurveBlocksExceeded
+
+// Total auction duration: 200 blocks
 ```
 
 ### 5. Inverted Auction (Price Increases Over Time)
@@ -237,8 +253,13 @@ priceCurve[0] = (200 << 240) | uint256(2e18);   // Start at 2x
 ```solidity
 // Price starts low and increases over time
 uint256[] memory priceCurve = new uint256[](1);
-priceCurve[0] = (100 << 240) | uint256(5e17);   // Start at 0.5x
-// Interpolates up to 1x over 100 blocks
+priceCurve[0] = (100 << 240) | uint256(5e17);   // Start at 0.5x for 100 blocks
+
+// Timeline:
+// Blocks 0-99: Interpolate from 0.5x up to 1x (1e18)
+// Block 100+: Reverts with PriceCurveBlocksExceeded
+
+// Total auction duration: 100 blocks
 ```
 
 ### 6. Complex Multi-Phase Curve

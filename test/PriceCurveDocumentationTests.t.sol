@@ -7,6 +7,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
+import {PriceCurveTestHelper} from "./helpers/PriceCurveTestHelper.sol";
 
 /**
  * @title PriceCurveDocumentationTests
@@ -19,10 +20,12 @@ contract PriceCurveDocumentationTests is Test {
 
     Tribunal public tribunal;
     address theCompact;
+    PriceCurveTestHelper public helper;
 
     function setUp() public {
         theCompact = address(0xC0);
         tribunal = new Tribunal(theCompact);
+        helper = new PriceCurveTestHelper();
     }
 
     // ============ Tests for Documentation Examples ============
@@ -63,8 +66,9 @@ contract PriceCurveDocumentationTests is Test {
      */
     function test_Doc_AggressiveInitialDiscount() public pure {
         uint256[] memory priceCurve = new uint256[](2);
-        priceCurve[0] = (10 << 240) | uint256(5e17); // Start at 0.5x (50% discount)
-        priceCurve[1] = (90 << 240) | uint256(9e17); // Quickly rise to 0.9x
+        priceCurve[0] = (10 << 240) | uint256(5e17); // Start at 0.5x for 10 blocks
+        priceCurve[1] = (90 << 240) | uint256(9e17); // Then 0.9x for 90 blocks
+        // Total duration: 10 + 90 = 100 blocks
 
         // At block 0: should be 0.5x
         assertEq(priceCurve.getCalculatedValues(0), 0.5e18, "Initial discount");
@@ -82,10 +86,19 @@ contract PriceCurveDocumentationTests is Test {
         // Expected: 0.9 + (1.0 - 0.9) * (45/90) = 0.95
         assertEq(scalingAtBlock55, 0.95e18, "Block 55 scaling");
 
-        // At block 99: near end, should be close to 1.0x
+        // At block 99: last valid block, should be close to 1.0x
         uint256 scalingAtBlock99 = priceCurve.getCalculatedValues(99);
         // Expected: 0.9 + (1.0 - 0.9) * (89/90) ≈ 0.9989
         assertApproxEqRel(scalingAtBlock99, 0.9989e18, 0.001e18, "Near end scaling");
+    }
+
+    function test_Doc_AggressiveInitialDiscount_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](2);
+        priceCurve[0] = (10 << 240) | uint256(5e17);
+        priceCurve[1] = (90 << 240) | uint256(9e17);
+
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 100);
     }
 
     /**
@@ -93,7 +106,7 @@ contract PriceCurveDocumentationTests is Test {
      */
     function test_Doc_ReverseDutchAuction() public pure {
         uint256[] memory priceCurve = new uint256[](1);
-        priceCurve[0] = (200 << 240) | uint256(2e18); // Start at 2x
+        priceCurve[0] = (200 << 240) | uint256(2e18); // Start at 2x for 200 blocks
 
         // At block 0: should be 2x
         assertEq(priceCurve.getCalculatedValues(0), 2e18, "Start at 2x");
@@ -103,10 +116,18 @@ contract PriceCurveDocumentationTests is Test {
         // Expected: 2.0 - (2.0 - 1.0) * (100/200) = 1.5
         assertEq(scalingAtBlock100, 1.5e18, "Midway at 1.5x");
 
-        // At block 199: near end, should be close to 1x
+        // At block 199: last valid block, should be close to 1x
         uint256 scalingAtBlock199 = priceCurve.getCalculatedValues(199);
         // Expected: 2.0 - (2.0 - 1.0) * (199/200) = 1.005
         assertEq(scalingAtBlock199, 1.005e18, "Near end at ~1x");
+    }
+
+    function test_Doc_ReverseDutchAuction_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](1);
+        priceCurve[0] = (200 << 240) | uint256(2e18);
+
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 200);
     }
 
     /**
@@ -124,6 +145,7 @@ contract PriceCurveDocumentationTests is Test {
 
         // Final 30 blocks: Remain at minimum price (1.0x)
         curve[2] = (30 << 240) | uint256(1e18);
+        // Total duration: 30 + 40 + 30 = 100 blocks
 
         // Test key points from the documentation timeline
         // Block 0: Auction starts at 1.5x scaling
@@ -159,39 +181,44 @@ contract PriceCurveDocumentationTests is Test {
         assertEq(fillAmount15, expectedFill15, "Fill amount at block 15");
     }
 
+    function test_Doc_CompleteDutchAuctionExample_ExceedsDuration() public {
+        uint256[] memory curve = new uint256[](3);
+        curve[0] = (30 << 240) | uint256(15e17);
+        curve[1] = (40 << 240) | uint256(12e17);
+        curve[2] = (30 << 240) | uint256(1e18);
+
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(curve, 100);
+    }
+
     /**
      * @notice Test that validates multiple consecutive zero-duration behavior
-     * @dev Need to verify actual implementation behavior
+     * @dev Confirms that only the first zero-duration element at a given block is used
      */
     function test_Doc_MultipleConsecutiveZeroDurationVerification() public pure {
         uint256[] memory priceCurve = new uint256[](4);
         priceCurve[0] = (10 << 240) | uint256(1.2e18);
         priceCurve[1] = (0 << 240) | uint256(1.5e18); // First zero-duration at block 10
-        priceCurve[2] = (0 << 240) | uint256(1.3e18); // Second zero-duration at block 10
+        priceCurve[2] = (0 << 240) | uint256(1.3e18); // Second zero-duration at block 10 (ignored)
         priceCurve[3] = (10 << 240) | uint256(1e18);
 
         // Test what actually happens at block 10
         uint256 scalingAtBlock10 = priceCurve.getCalculatedValues(10);
 
-        // The test shows it uses the FIRST zero-duration element (1.5x)
-        // This needs to be verified against the actual PriceCurveLib implementation
+        // Confirms it uses the FIRST zero-duration element (1.5x), not subsequent ones
         assertEq(scalingAtBlock10, 1.5e18, "Uses first zero-duration element");
-
-        // Note: Documentation may need update if this is the actual behavior
     }
 
     /**
      * @notice Test Complex Multi-Phase Curve from documentation
-     * @dev Note: Doc example has mixed scaling directions which would be invalid
+     * @dev Tests a valid multi-phase curve where all segments stay on the same side of 1e18
      */
     function test_Doc_ComplexMultiPhaseCurve_Corrected() public pure {
-        // The documentation example mixes >1e18 and <1e18 which is invalid
-        // Here's a corrected version that stays on one side
+        // All segments must stay on the same side of 1e18 (cannot mix exact-in and exact-out)
         uint256[] memory priceCurve = new uint256[](3);
         priceCurve[0] = (30 << 240) | uint256(0.5e18); // Start at 0.5x
         priceCurve[1] = (40 << 240) | uint256(0.7e18); // Rise to 0.7x at block 30
         priceCurve[2] = (30 << 240) | uint256(0.8e18); // Rise to 0.8x at block 70
-        // Final interpolation to 1x at block 100
 
         // Block 15: interpolating from 0.5 to 0.7
         uint256 scalingAtBlock15 = priceCurve.getCalculatedValues(15);
@@ -207,11 +234,26 @@ contract PriceCurveDocumentationTests is Test {
         uint256 scalingAtBlock85 = priceCurve.getCalculatedValues(85);
         // Expected: 0.8 + (1.0 - 0.8) * (15/30) = 0.9
         assertEq(scalingAtBlock85, 0.9e18, "Block 85");
+
+        // Block 99: last valid block
+        uint256 scalingAtBlock99 = priceCurve.getCalculatedValues(99);
+        // Expected: 0.8 + (1.0 - 0.8) * (29/30) ≈ 0.9933
+        assertApproxEqRel(scalingAtBlock99, 0.9933e18, 0.001e18, "Block 99");
+    }
+
+    function test_Doc_ComplexMultiPhaseCurve_ExceedsDuration() public {
+        uint256[] memory priceCurve = new uint256[](3);
+        priceCurve[0] = (30 << 240) | uint256(0.5e18);
+        priceCurve[1] = (40 << 240) | uint256(0.7e18);
+        priceCurve[2] = (30 << 240) | uint256(0.8e18);
+
+        vm.expectRevert(PriceCurveLib.PriceCurveBlocksExceeded.selector);
+        helper.getCalculatedValues(priceCurve, 100);
     }
 
     /**
-     * @notice Test that empty price curve with targetBlock behavior
-     * @dev Documentation says it should revert, but implementation doesn't
+     * @notice Test that empty price curve with targetBlock returns neutral scaling
+     * @dev Confirms empty price curve always returns 1e18 regardless of targetBlock
      */
     function test_Doc_EmptyPriceCurveWithTargetBlock_ActualBehavior() public view {
         Lock[] memory maximumClaimAmounts = new Lock[](1);
@@ -219,8 +261,7 @@ contract PriceCurveDocumentationTests is Test {
 
         uint256[] memory priceCurve = new uint256[](0);
 
-        // Documentation says this should revert with InvalidTargetBlockDesignation
-        // But actual implementation doesn't revert - it returns neutral scaling
+        // Empty price curve returns neutral scaling (1e18) even with non-zero targetBlock
         (uint256 fillAmount, uint256[] memory claimAmounts) = tribunal.deriveAmounts(
             maximumClaimAmounts,
             priceCurve,
@@ -231,10 +272,8 @@ contract PriceCurveDocumentationTests is Test {
             1e18
         );
 
-        // Actual behavior: returns neutral scaling
+        // Confirms neutral scaling behavior
         assertEq(fillAmount, 1 ether, "Neutral fill amount");
         assertEq(claimAmounts[0], 1 ether, "Neutral claim amount");
-
-        // Note: Documentation needs update to match actual behavior
     }
 }
