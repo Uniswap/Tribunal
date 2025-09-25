@@ -100,10 +100,10 @@ library PriceCurveLib {
                 getComponents(PriceCurveElement.wrap(parameters[i]));
             uint256 supplementalScalingFactor = supplementalParameters[i];
 
-            errorBuffer |=
-                (!scalingFactor.sharesScalingDirection(supplementalScalingFactor)).asUint256();
-
             uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
+
+            errorBuffer |= (!scalingFactor.sharesScalingDirection(supplementalScalingFactor))
+                .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
 
             combinedParameters[i] =
                 PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
