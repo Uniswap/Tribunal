@@ -34,6 +34,7 @@ import {
 /**
  * @title Tribunal
  * @author 0age
+ * @custom:security-contact security@uniswap.org
  * @notice Tribunal is a framework for processing cross-chain swap settlements against PGA (priority gas auction)
  * blockchains. It ensures that tokens are transferred according to the mandate specified by the originating sponsor
  * and enforces that a single party is able to perform the fill in the event of a dispute.
@@ -58,9 +59,16 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @notice Base scaling factor (1e18).
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
-    // ======== Immutables ========
+    bytes32 private constant _EMPTY_HASH =
+        0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
+
+    uint256 private constant _ADDRESS_BITS = 0xa0;
+
     /// @notice The Compact contract instance used for processing claims against resource locks.
-    ITheCompactClaims public immutable theCompact;
+    ITheCompactClaims public constant THE_COMPACT =
+        ITheCompactClaims(0x00000000000000171ede64904551eeDF3C6C9788);
+
+    // ======== Immutables ========
 
     // Chain ID at deployment, used for triggering EIP-712 domain separator updates.
     uint256 private immutable _INITIAL_CHAIN_ID;
@@ -89,12 +97,10 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Constructor that assigns the address of The Compact and initializes immutable variables,
+     * @notice Constructor that initializes immutable variables,
      * capturing the initial chain ID and domain separator.
      */
-    constructor(address theCompact_) {
-        theCompact = ITheCompactClaims(theCompact_);
-
+    constructor() {
         _INITIAL_CHAIN_ID = block.chainid;
         _INITIAL_DOMAIN_SEPARATOR = DomainLib.toCurrentDomainSeparator();
     }
@@ -103,11 +109,6 @@ contract Tribunal is BlockNumberish, ITribunal {
     receive() external payable {}
 
     // ======== External Functions ========
-
-    /// @inheritdoc ITribunal
-    function name() external pure returns (string memory) {
-        return "Tribunal";
-    }
 
     /// @inheritdoc ITribunal
     function fill(
@@ -214,23 +215,24 @@ contract Tribunal is BlockNumberish, ITribunal {
             idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
             if (_checkCompactAllowance(commitment.token, address(this)) < idsAndAmounts[0][1]) {
                 SafeTransferLib.safeApproveWithRetry(
-                    commitment.token, address(theCompact), type(uint256).max
+                    commitment.token, address(THE_COMPACT), type(uint256).max
                 );
             }
         }
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
+            ITheCompact(address(THE_COMPACT)).batchDeposit{value: callValue}(
                 idsAndAmounts, recipient
             );
             return bytes32(0);
         }
 
+        // An empty nonce indicates an onchain allocator; wrap registration in prepare & execute hooks.
         if (compact.nonce == 0) {
             // Do an on chain allocation if no nonce is provided
             (, address allocator,,,) =
-                ITheCompact(address(theCompact)).getLockDetails(idsAndAmounts[0][0]);
+                ITheCompact(address(THE_COMPACT)).getLockDetails(idsAndAmounts[0][0]);
 
             // Prepare the allocation with the allocator
             (uint256 nonce) = IOnChainAllocation(allocator).prepareAllocation(
@@ -243,25 +245,18 @@ contract Tribunal is BlockNumberish, ITribunal {
                 context
             );
 
-            // deposit if mandateHash is zero
-            if (mandateHash == bytes32(0)) {
-                ITheCompact(address(theCompact)).batchDeposit{value: callValue}(
-                    idsAndAmounts, recipient
-                );
-            } else {
-                // deposit and register the tokens
-                (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
-                    value: callValue
-                }(
-                    compact.sponsor,
-                    idsAndAmounts,
-                    compact.arbiter,
-                    nonce,
-                    compact.expires,
-                    COMPACT_TYPEHASH_WITH_MANDATE,
-                    mandateHash
-                );
-            }
+            // deposit and register the tokens
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
+                value: callValue
+            }(
+                compact.sponsor,
+                idsAndAmounts,
+                compact.arbiter,
+                nonce,
+                compact.expires,
+                COMPACT_TYPEHASH_WITH_MANDATE,
+                mandateHash
+            );
 
             // execute the allocation
             IOnChainAllocation(allocator).executeAllocation(
@@ -275,7 +270,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(theCompact)).batchDepositAndRegisterFor{
+            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT)).batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -323,6 +318,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
     }
 
+    // ======== External View Functions ========
+
     /// @inheritdoc ITribunal
     function quote(
         BatchClaim calldata claim,
@@ -348,47 +345,39 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function getCompactWitnessDetails()
-        external
-        pure
-        returns (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg)
-    {
-        return (string.concat("Mandate(", WITNESS_TYPESTRING, ")"), 4, 5);
-    }
-
-    /// @inheritdoc ITribunal
     function filled(bytes32 claimHash) external view returns (address) {
         return _dispositions[claimHash];
     }
+
+    // ======== External Pure Functions ========
+
+    /// @inheritdoc ITribunal
+    function name() external pure returns (string memory) {
+        return "Tribunal";
+    }
+
+    /// @inheritdoc ITribunal
+    function getCompactWitnessDetails()
+        external
+        pure
+        returns (string memory witnessTypeString, ArgDetail[] memory details)
+    {
+        witnessTypeString = string.concat("Mandate(", WITNESS_TYPESTRING, ")");
+
+        details = new ArgDetail[](1);
+        details[0] = ArgDetail({
+            tokenPath: "fills[].fillToken",
+            argPath: "fills[].minimumFillAmount",
+            description: "Output token and minimum amount for each fill in the Fills array"
+        });
+    }
+
+    // ======== Public View Functions ========
 
     /// @inheritdoc ITribunal
     function deriveMandateHash(Mandate calldata mandate) public view returns (bytes32) {
         return keccak256(
             abi.encode(MANDATE_TYPEHASH, mandate.adjuster, deriveFillsHash(mandate.fills))
-        );
-    }
-
-    /**
-     * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
-     * and the index of the target fill in the array.
-     * @param targetFill The fill being executed.
-     * @param adjuster The adjuster address.
-     * @param fillIndex The index of the target fill in the fillHashes array.
-     * @param fillHashes The array of fill hashes.
-     * @return The derived mandate hash.
-     */
-    function _deriveMandateHash(
-        Fill calldata targetFill,
-        address adjuster,
-        uint256 fillIndex,
-        bytes32[] calldata fillHashes
-    ) internal view returns (bytes32) {
-        if (fillIndex >= fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
-            revert InvalidFillHashArguments();
-        }
-
-        return keccak256(
-            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
     }
 
@@ -422,75 +411,6 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function deriveRecipientCallbackHash(RecipientCallback[] calldata recipientCallback)
-        public
-        pure
-        returns (bytes32)
-    {
-        if (recipientCallback.length == 0) {
-            // empty hash
-            return 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
-        } else if (recipientCallback.length != 1) {
-            revert InvalidRecipientCallbackLength();
-        }
-
-        RecipientCallback calldata callback = recipientCallback[0];
-
-        return keccak256(
-            abi.encodePacked(
-                keccak256(
-                    abi.encode(
-                        MANDATE_RECIPIENT_CALLBACK_TYPEHASH,
-                        callback.chainId,
-                        _deriveClaimHash(
-                            callback.compact,
-                            callback.mandateHash,
-                            MANDATE_LOCK_TYPEHASH,
-                            MANDATE_BATCH_COMPACT_TYPEHASH
-                        ),
-                        callback.context
-                    )
-                )
-            )
-        );
-    }
-
-    /**
-     * @notice Derives the claim hash from compact and mandate hash based on a typehash.
-     * @param compact The compact parameters.
-     * @param mandateHash The derived mandate hash.
-     * @return The claim hash.
-     */
-    function _deriveClaimHash(
-        BatchCompact calldata compact,
-        bytes32 mandateHash,
-        bytes32 lockTypehash,
-        bytes32 compactTypehash
-    ) internal pure returns (bytes32) {
-        bytes32 commitmentsHash = _deriveCommitmentsHash(compact.commitments, lockTypehash);
-        return keccak256(
-            abi.encode(
-                compactTypehash,
-                compact.arbiter,
-                compact.sponsor,
-                compact.nonce,
-                compact.expires,
-                commitmentsHash,
-                mandateHash
-            )
-        );
-    }
-
-    /// @inheritdoc ITribunal
-    function deriveClaimHash(BatchCompact calldata compact, bytes32 mandateHash)
-        public
-        pure
-        returns (bytes32)
-    {
-        return _deriveClaimHash(compact, mandateHash, LOCK_TYPEHASH, COMPACT_TYPEHASH_WITH_MANDATE);
-    }
-
-    /// @inheritdoc ITribunal
     function deriveAmounts(
         Lock[] calldata maximumClaimAmounts,
         uint256[] memory priceCurve,
@@ -500,7 +420,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 baselinePriorityFee,
         uint256 scalingFactor
     ) public view returns (uint256 fillAmount, uint256[] memory claimAmounts) {
-        uint256 currentScalingFactor = 1e18;
+        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
         if (targetBlock != 0) {
             if (targetBlock > fillBlock) {
                 revert InvalidTargetBlock(fillBlock, targetBlock);
@@ -530,14 +450,15 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
-        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor
-        bool useExactIn =
-            (scalingFactor > 1e18).or(scalingFactor == 1e18 && currentScalingFactor >= 1e18);
+        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR).or(
+            scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
+        );
 
         if (useExactIn) {
             // For exact-in, increase fill amount and use maximum claim amounts.
-            scalingMultiplier =
-                currentScalingFactor + ((scalingFactor - 1e18) * priorityFeeAboveBaseline);
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount.mulWadUp(scalingMultiplier);
             // Copy maximum claim amounts unchanged
             for (uint256 i = 0; i < claimAmounts.length; i++) {
@@ -545,8 +466,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             }
         } else {
             // For exact-out, decrease claim amount.
-            scalingMultiplier =
-                currentScalingFactor - ((1e18 - scalingFactor) * priorityFeeAboveBaseline);
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
             fillAmount = minimumFillAmount;
             // Apply scaling to maximum claim amounts
             for (uint256 i = 0; i < claimAmounts.length; i++) {
@@ -556,6 +477,52 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         return (fillAmount, claimAmounts);
     }
+
+    // ======== Public Pure Functions ========
+
+    /// @inheritdoc ITribunal
+    function deriveRecipientCallbackHash(RecipientCallback[] calldata recipientCallback)
+        public
+        pure
+        returns (bytes32)
+    {
+        if (recipientCallback.length == 0) {
+            return _EMPTY_HASH;
+        } else if (recipientCallback.length != 1) {
+            revert InvalidRecipientCallbackLength();
+        }
+
+        RecipientCallback calldata callback = recipientCallback[0];
+
+        return keccak256(
+            abi.encodePacked(
+                keccak256(
+                    abi.encode(
+                        MANDATE_RECIPIENT_CALLBACK_TYPEHASH,
+                        callback.chainId,
+                        _deriveClaimHash(
+                            callback.compact,
+                            callback.mandateHash,
+                            MANDATE_LOCK_TYPEHASH,
+                            MANDATE_BATCH_COMPACT_TYPEHASH
+                        ),
+                        callback.context
+                    )
+                )
+            )
+        );
+    }
+
+    /// @inheritdoc ITribunal
+    function deriveClaimHash(BatchCompact calldata compact, bytes32 mandateHash)
+        public
+        pure
+        returns (bytes32)
+    {
+        return _deriveClaimHash(compact, mandateHash, LOCK_TYPEHASH, COMPACT_TYPEHASH_WITH_MANDATE);
+    }
+
+    // ======== Internal State-changing Functions ========
 
     /**
      * @notice Internal implementation of the fill function.
@@ -610,7 +577,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             validFiller := xor(validFiller, mul(iszero(validFiller), caller()))
         }
 
-        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> 160;
+        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> _ADDRESS_BITS;
         // A validBlockWindow of 0 means no window restriction (valid indefinitely)
         // A validBlockWindow of 1 means it must be filled on the target block
         if (
@@ -795,7 +762,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 component.portions[0].amount = claimAmounts[i];
                 claim.claims[i] = component;
             }
-            claimHash = theCompact.batchClaim(claim);
+            claimHash = THE_COMPACT.batchClaim(claim);
         }
 
         // Do a callback to the sender
@@ -865,6 +832,32 @@ contract Tribunal is BlockNumberish, ITribunal {
         if (remaining > 0) {
             msg.sender.safeTransferETH(remaining);
         }
+    }
+
+    // ======== Internal View Functions ========
+
+    /**
+     * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
+     * and the index of the target fill in the array.
+     * @param targetFill The fill being executed.
+     * @param adjuster The adjuster address.
+     * @param fillIndex The index of the target fill in the fillHashes array.
+     * @param fillHashes The array of fill hashes.
+     * @return The derived mandate hash.
+     */
+    function _deriveMandateHash(
+        Fill calldata targetFill,
+        address adjuster,
+        uint256 fillIndex,
+        bytes32[] calldata fillHashes
+    ) internal view returns (bytes32) {
+        if (fillIndex >= fillHashes.length || fillHashes[fillIndex] != deriveFillHash(targetFill)) {
+            revert InvalidFillHashArguments();
+        }
+
+        return keccak256(
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
+        );
     }
 
     /**
@@ -938,7 +931,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         view
         returns (uint256 amount)
     {
-        address compact = address(theCompact);
+        address compact = address(THE_COMPACT);
         assembly ("memory-safe") {
             mstore(0x14, owner) // Store the `owner` argument.
             mstore(0x34, compact)
@@ -964,22 +957,6 @@ contract Tribunal is BlockNumberish, ITribunal {
         return _INITIAL_DOMAIN_SEPARATOR.toLatest(_INITIAL_CHAIN_ID);
     }
 
-    function _deriveCommitmentsHash(Lock[] calldata commitments, bytes32 typehash)
-        internal
-        pure
-        returns (bytes32)
-    {
-        bytes32[] memory commitmentsHashes = new bytes32[](commitments.length);
-        for (uint256 i = 0; i < commitments.length; i++) {
-            commitmentsHashes[i] = keccak256(
-                abi.encode(
-                    typehash, commitments[i].lockTag, commitments[i].token, commitments[i].amount
-                )
-            );
-        }
-        return keccak256(abi.encodePacked(commitmentsHashes));
-    }
-
     /**
      * @notice Calculates the priority fee above the baseline.
      * @param baselinePriorityFee The base fee threshold where scaling kicks in.
@@ -999,30 +976,6 @@ contract Tribunal is BlockNumberish, ITribunal {
                 priorityFee = 0;
             }
         }
-    }
-
-    /**
-     * @notice Process the mandated directive (i.e. trigger settlement).
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandateHash The derived mandate hash.
-     * @param claimant The recipient of claimed tokens on claim chain.
-     * @param claimAmounts The amounts to claim.
-     * @param targetBlock The targeted fill block, or 0 for no target block.
-     */
-    function _processDirective(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        uint256 targetBlock
-    ) internal virtual {
-        // NOTE: Override & implement directive processing.
     }
 
     /**
@@ -1058,6 +1011,76 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // NOTE: Override & implement quote logic.
         return msg.sender.balance / 1000;
+    }
+
+    /**
+     * @notice Process the mandated directive (i.e. trigger settlement).
+     * @param chainId The claim chain where the resource lock is held.
+     * @param compact The compact parameters.
+     * @param sponsorSignature The signature of the sponsor.
+     * @param allocatorSignature The signature of the allocator.
+     * @param mandateHash The derived mandate hash.
+     * @param claimant The recipient of claimed tokens on claim chain.
+     * @param claimAmounts The amounts to claim.
+     * @param targetBlock The targeted fill block, or 0 for no target block.
+     */
+    function _processDirective(
+        uint256 chainId,
+        BatchCompact calldata compact,
+        bytes calldata sponsorSignature,
+        bytes calldata allocatorSignature,
+        bytes32 mandateHash,
+        bytes32 claimant,
+        uint256[] memory claimAmounts,
+        uint256 targetBlock
+    ) internal virtual {
+        // NOTE: Override & implement directive processing.
+    }
+
+    // ======== Internal Pure Functions ========
+
+    /**
+     * @notice Derives the claim hash from compact and mandate hash based on a typehash.
+     * @param compact The compact parameters.
+     * @param mandateHash The derived mandate hash.
+     * @param lockTypehash The lock typehash.
+     * @param compactTypehash The compact typehash.
+     * @return The claim hash.
+     */
+    function _deriveClaimHash(
+        BatchCompact calldata compact,
+        bytes32 mandateHash,
+        bytes32 lockTypehash,
+        bytes32 compactTypehash
+    ) internal pure returns (bytes32) {
+        bytes32 commitmentsHash = _deriveCommitmentsHash(compact.commitments, lockTypehash);
+        return keccak256(
+            abi.encode(
+                compactTypehash,
+                compact.arbiter,
+                compact.sponsor,
+                compact.nonce,
+                compact.expires,
+                commitmentsHash,
+                mandateHash
+            )
+        );
+    }
+
+    function _deriveCommitmentsHash(Lock[] calldata commitments, bytes32 typehash)
+        internal
+        pure
+        returns (bytes32)
+    {
+        bytes32[] memory commitmentsHashes = new bytes32[](commitments.length);
+        for (uint256 i = 0; i < commitments.length; i++) {
+            commitmentsHashes[i] = keccak256(
+                abi.encode(
+                    typehash, commitments[i].lockTag, commitments[i].token, commitments[i].amount
+                )
+            );
+        }
+        return keccak256(abi.encodePacked(commitmentsHashes));
     }
 
     function _toAdjustmentHash(Adjustment calldata adjustment, bytes32 claimHash)

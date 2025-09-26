@@ -5,15 +5,15 @@ import {LibBytes} from "solady/utils/LibBytes.sol";
 
 import {IDestinationSettler} from "./interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
-import {ITribunal} from "./interfaces/ITribunal.sol";
-import {Mandate, Fill, Adjustment} from "./types/TribunalStructs.sol";
+import {Fill, Adjustment} from "./types/TribunalStructs.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 /// @title ERC7683Tribunal
+/// @custom:security-contact security@uniswap.org
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
 contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     // ======== Constructor ========
-    constructor(address compact) Tribunal(compact) {}
+    constructor() Tribunal() {}
 
     // ======== External Functions ========
     /**
@@ -113,7 +113,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock
-    ) internal pure returns (bytes memory fillerData) {
+    ) external pure returns (bytes memory fillerData) {
         fillerData = abi.encode(adjustment, adjustmentAuthorization, claimant, fillBlock);
     }
 
@@ -157,7 +157,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          *  - 5 words for lengths of dynamics (assuming empty).
          *  - 2 words for fillHashes length & at least a single word for fill hash.
          * Also ensure no funny business with the claim pointer (should be 0x80).
-         * 
+         *
          * Need 10 words in fillerData at minimum:
          *  - 1 word for offset to adjustment (dynamic struct).
          *  - 1 word for offset to adjustmentAuthorization.

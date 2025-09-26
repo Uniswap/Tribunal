@@ -6,6 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {TheCompact} from "../lib/the-compact/src/TheCompact.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
+import {DeployTheCompact} from "./helpers/DeployTheCompact.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "../lib/the-compact/src/types/EIP712Types.sol";
 import {Mandate, Fill, RecipientCallback, Adjustment} from "../src/types/TribunalStructs.sol";
 import {
@@ -113,7 +114,7 @@ contract MockBridge {
     }
 }
 
-contract TribunalE2ETest is Test {
+contract TribunalE2ETest is DeployTheCompact {
     // Storage for addresses - these survive between tests
     address[] public contractAddresses; // Will store all contract addresses
     uint256[] public snapshots; // Will store snapshot IDs
@@ -164,8 +165,8 @@ contract TribunalE2ETest is Test {
 
         // Deploy on Chain 1
         vm.chainId(CHAIN_1);
-        TheCompact theCompactChain1 = new TheCompact{salt: 0}();
-        Tribunal tribunalChain1Temp = new Tribunal{salt: 0}(address(theCompactChain1));
+        TheCompact theCompactChain1 = deployTheCompact();
+        Tribunal tribunalChain1Temp = new Tribunal{salt: 0}();
         MockERC20 tokenChain1Temp = new MockERC20();
 
         // Transfer tokens to sponsor (MockERC20 mints to deployer)
@@ -192,8 +193,8 @@ contract TribunalE2ETest is Test {
         // Deploy on Chain 2
         vm.chainId(CHAIN_2);
 
-        TheCompact theCompactChain2 = new TheCompact{salt: 0}();
-        Tribunal tribunalChain2Temp = new Tribunal{salt: 0}(address(theCompactChain2));
+        TheCompact theCompactChain2 = deployTheCompact();
+        Tribunal tribunalChain2Temp = new Tribunal{salt: 0}();
         BridgedToken bridgedTokenChain2Temp = new BridgedToken{salt: 0}();
         TestRecipientCallback recipientCallbackTemp = new TestRecipientCallback{salt: 0}();
         MockBridge bridgeTemp = new MockBridge{salt: 0}(
@@ -421,10 +422,10 @@ contract TribunalE2ETest is Test {
 
         // Execute the cross-chain fill
         (
-            bytes32 returnedClaimHash,
-            , // bytes32 returnedMandateHash
-            uint256 fillAmount,
+            bytes32 returnedClaimHash, // bytes32 returnedMandateHash
             // uint256[] memory claimAmounts
+            ,
+            uint256 fillAmount,
         ) = tribunalChain2.fill(
             batchClaim,
             fills[0],

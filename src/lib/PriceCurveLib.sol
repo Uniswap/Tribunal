@@ -12,6 +12,7 @@ type PriceCurveElement is uint256;
 
 /**
  * @title PriceCurveLib
+ * @custom:security-contact security@uniswap.org
  * @dev Library for the DecayParameter type which packs three values:
  *      - blockDuration (16 bits): Duration in blocks
  *      - scalingFactor (240 bits): additional scaling factor to apply to fill increase or claim decrease
@@ -99,10 +100,10 @@ library PriceCurveLib {
                 getComponents(PriceCurveElement.wrap(parameters[i]));
             uint256 supplementalScalingFactor = supplementalParameters[i];
 
-            errorBuffer |=
-                (!scalingFactor.sharesScalingDirection(supplementalScalingFactor)).asUint256();
-
             uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
+
+            errorBuffer |= (!scalingFactor.sharesScalingDirection(supplementalScalingFactor))
+                .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
 
             combinedParameters[i] =
                 PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
@@ -164,7 +165,7 @@ library PriceCurveLib {
             if (blocksPassed < blocksCounted + duration) {
                 // For regular segments, we need to handle based on whether we've passed a zero duration
                 if (
-                    hasPassedZeroDuration && i > 0
+                    hasPassedZeroDuration
                         && getBlockDuration(PriceCurveElement.wrap(parameters[i - 1])) == 0
                 ) {
                     // We're in a segment right after a zero duration - start interpolation from zero duration values

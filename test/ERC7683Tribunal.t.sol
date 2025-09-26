@@ -75,7 +75,7 @@ abstract contract MockSetup is Test {
     ResolvedCrossChainOrder public order;
 
     function setUp() public {
-        tribunal = new ERC7683Tribunal(address(new TheCompact()));
+        tribunal = new ERC7683Tribunal();
         token = new MockERC20();
         sponsor = makeAddr("Sponsor");
         filler = makeAddr("Filler");

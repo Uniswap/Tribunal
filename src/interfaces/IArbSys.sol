@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 /**
  * @notice Minimal interface for interacting with Arbitrum system contracts
+ * @custom:security-contact security@uniswap.org
  */
 interface IArbSys {
     /**

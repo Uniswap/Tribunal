@@ -5,6 +5,7 @@ import {Lock} from "the-compact/src/types/EIP712Types.sol";
 
 /**
  * @title ITribunalCallback
+ * @custom:security-contact security@uniswap.org
  * @notice Interface for filler contracts that can receive callbacks from Tribunal during single-chain fills.
  * @dev Called after claiming tokens from The Compact but before transferring fill tokens to the recipient and
  * potentially triggering a recipient callback.

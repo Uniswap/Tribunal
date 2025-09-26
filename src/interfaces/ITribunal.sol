@@ -6,6 +6,7 @@ import {Fill, Adjustment, Mandate, RecipientCallback} from "../types/TribunalStr
 
 /**
  * @title ITribunal
+ * @custom:security-contact security@uniswap.org
  * @notice Interface for the Tribunal contract that handles cross-chain swap settlements.
  * @dev Provides methods for filling, cancelling, and querying cross-chain orders with dynamic pricing.
  */
@@ -79,6 +80,12 @@ interface ITribunal {
         BatchCompact compact;
         bytes sponsorSignature; // Authorization from the sponsor
         bytes allocatorSignature; // Authorization from the allocator
+    }
+
+    struct ArgDetail {
+        string tokenPath;
+        string argPath;
+        string description;
     }
 
     /**
@@ -183,13 +190,12 @@ interface ITribunal {
     /**
      * @notice Get details about the expected compact witness.
      * @return witnessTypeString The EIP-712 type string for the mandate.
-     * @return tokenArg The position of the token argument.
-     * @return amountArg The position of the amount argument.
+     * @return details An array of argument details for tokens and amounts.
      */
     function getCompactWitnessDetails()
         external
         pure
-        returns (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg);
+        returns (string memory witnessTypeString, ArgDetail[] memory details);
 
     /**
      * @notice Check if a claim has been filled.
@@ -242,7 +248,7 @@ interface ITribunal {
 
     /**
      * @notice Derives fill and claim amounts based on mandate parameters and current conditions.
-     * @param maximumClaimAmounts The minimum claim amounts for each commitment.
+     * @param maximumClaimAmounts The maximum claim amounts for each commitment.
      * @param priceCurve The additional scaling factor to apply at each respective duration.
      * @param targetBlock The block where the fill can first be performed.
      * @param fillBlock The block where the fill is performed.

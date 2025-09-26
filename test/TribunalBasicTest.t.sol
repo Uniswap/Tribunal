@@ -3,6 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
+import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
@@ -35,7 +36,7 @@ contract TribunalBasicTest is Test {
 
     function setUp() public {
         theCompact = address(0xC0);
-        tribunal = new Tribunal(theCompact);
+        tribunal = new Tribunal();
         (sponsor,) = makeAddrAndKey("sponsor");
         (adjuster,) = makeAddrAndKey("adjuster");
 
@@ -156,11 +157,16 @@ contract TribunalBasicTest is Test {
     }
 
     function test_GetCompactWitnessDetails() public view {
-        (string memory witnessTypeString, uint256 tokenArg, uint256 amountArg) =
+        (string memory witnessTypeString, ITribunal.ArgDetail[] memory details) =
             tribunal.getCompactWitnessDetails();
 
         assertEq(witnessTypeString, string.concat("Mandate(", WITNESS_TYPESTRING, ")"));
-        assertEq(tokenArg, 4);
-        assertEq(amountArg, 5);
+        assertEq(details.length, 1);
+        assertEq(details[0].tokenPath, "fills[].fillToken");
+        assertEq(details[0].argPath, "fills[].minimumFillAmount");
+        assertEq(
+            details[0].description,
+            "Output token and minimum amount for each fill in the Fills array"
+        );
     }
 }
