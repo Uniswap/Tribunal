@@ -17,12 +17,13 @@ import {BatchClaim as CompactBatchClaim} from "the-compact/src/types/BatchClaims
 import {BatchClaimComponent, Component} from "the-compact/src/types/Components.sol";
 import {ITribunalCallback} from "./interfaces/ITribunalCallback.sol";
 import {ITribunal} from "./interfaces/ITribunal.sol";
-import {Adjustment, Mandate, Fill, RecipientCallback} from "./types/TribunalStructs.sol";
+import {Adjustment, Mandate, Fill, FillComponent, RecipientCallback, FillRecipient} from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
 import {IRecipientCallback} from "./interfaces/IRecipientCallback.sol";
 import {
     MANDATE_TYPEHASH,
     MANDATE_FILL_TYPEHASH,
+    MANDATE_FILL_COMPONENT_TYPEHASH,
     MANDATE_RECIPIENT_CALLBACK_TYPEHASH,
     MANDATE_BATCH_COMPACT_TYPEHASH,
     MANDATE_LOCK_TYPEHASH,
@@ -127,7 +128,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         returns (
             bytes32 claimHash,
             bytes32 mandateHash,
-            uint256 fillAmount,
+            uint256[] memory fillAmounts,
             uint256[] memory claimAmounts
         )
     {
@@ -366,9 +367,9 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         details = new ArgDetail[](1);
         details[0] = ArgDetail({
-            tokenPath: "fills[].fillToken",
-            argPath: "fills[].minimumFillAmount",
-            description: "Output token and minimum amount for each fill in the Fills array"
+            tokenPath: "fills[].components[].fillToken",
+            argPath: "fills[].components[].minimumFillAmount",
+            description: "Output token and minimum amount for each fill component in the Fills array"
         });
     }
 
@@ -398,16 +399,40 @@ contract Tribunal is BlockNumberish, ITribunal {
                 block.chainid,
                 address(this),
                 targetFill.expires,
-                targetFill.fillToken,
-                targetFill.minimumFillAmount,
+                deriveFillComponentsHash(targetFill.components),
                 targetFill.baselinePriorityFee,
                 targetFill.scalingFactor,
                 keccak256(abi.encodePacked(targetFill.priceCurve)),
-                targetFill.recipient,
                 deriveRecipientCallbackHash(targetFill.recipientCallback),
                 targetFill.salt
             )
         );
+    }
+
+    /// @notice Derives the hash of a single fill component.
+    /// @param component The fill component.
+    /// @return The hash of the fill component.
+    function deriveFillComponentHash(FillComponent calldata component) public pure returns (bytes32) {
+        return keccak256(
+            abi.encode(
+                MANDATE_FILL_COMPONENT_TYPEHASH,
+                component.fillToken,
+                component.minimumFillAmount,
+                component.recipient,
+                component.applyScaling
+            )
+        );
+    }
+
+    /// @notice Derives the hash of the fill components array.
+    /// @param components The fill components array.
+    /// @return The hash of the fill components array.
+    function deriveFillComponentsHash(FillComponent[] calldata components) public pure returns (bytes32) {
+        bytes32[] memory componentHashes = new bytes32[](components.length);
+        for (uint256 i = 0; i < components.length; ++i) {
+            componentHashes[i] = deriveFillComponentHash(components[i]);
+        }
+        return keccak256(abi.encodePacked(componentHashes));
     }
 
     /// @inheritdoc ITribunal
@@ -478,6 +503,95 @@ contract Tribunal is BlockNumberish, ITribunal {
         return (fillAmount, claimAmounts);
     }
 
+    /// @notice Derives fill amounts and claim amounts from fill components.
+    /// @param maximumClaimAmounts The maximum amounts to claim.
+    /// @param components The fill components.
+    /// @param priceCurve The price curve to apply.
+    /// @param targetBlock The target block number.
+    /// @param fillBlock The fill block number.
+    /// @param baselinePriorityFee The baseline priority fee.
+    /// @param scalingFactor The scaling factor.
+    /// @return fillAmounts The derived fill amounts for each component.
+    /// @return claimAmounts The derived claim amounts.
+    function deriveAmountsFromComponents(
+        Lock[] calldata maximumClaimAmounts,
+        FillComponent[] calldata components,
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock,
+        uint256 baselinePriorityFee,
+        uint256 scalingFactor
+    ) public view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
+        fillAmounts = new uint256[](components.length);
+        
+        // Calculate the common scaling values
+        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
+        if (targetBlock != 0) {
+            if (targetBlock > fillBlock) {
+                revert InvalidTargetBlock(fillBlock, targetBlock);
+            }
+            uint256 blocksPassed;
+            unchecked {
+                blocksPassed = fillBlock - targetBlock;
+            }
+            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
+        } else {
+            if (priceCurve.length != 0) {
+                revert InvalidTargetBlockDesignation();
+            }
+        }
+
+        if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
+            revert PriceCurveLib.InvalidPriceCurveParameters();
+        }
+
+        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+        
+        // Calculate the scaling multiplier
+        uint256 scalingMultiplier;
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR).or(
+            scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
+        );
+
+        if (useExactIn) {
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
+        } else {
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
+        }
+
+        // Calculate fill amounts for each component
+        for (uint256 i = 0; i < components.length; i++) {
+            if (components[i].applyScaling) {
+                if (useExactIn) {
+                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
+                } else {
+                    fillAmounts[i] = components[i].minimumFillAmount;
+                }
+            } else {
+                // If not applying scaling, use the minimum amount as-is
+                fillAmounts[i] = components[i].minimumFillAmount;
+            }
+        }
+
+        // Calculate claim amounts
+        claimAmounts = new uint256[](maximumClaimAmounts.length);
+        if (useExactIn) {
+            // For exact-in, use maximum claim amounts unchanged
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
+        } else {
+            // For exact-out, apply scaling to claim amounts
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
+            }
+        }
+
+        return (fillAmounts, claimAmounts);
+    }
+
     // ======== Public Pure Functions ========
 
     /// @inheritdoc ITribunal
@@ -539,7 +653,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @param fillHashes An array of the hashes of each fill.
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
-     * @return fillAmount The amount of tokens to be filled.
+     * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function _fill(
@@ -559,7 +673,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         returns (
             bytes32 claimHash,
             bytes32 mandateHash,
-            uint256 fillAmount,
+            uint256[] memory fillAmounts,
             uint256[] memory claimAmounts
         )
     {
@@ -589,12 +703,12 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Derive fill and claim amounts.
-        (fillAmount, claimAmounts) = deriveAmounts(
+        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
             compact.commitments,
+            mandate.components,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
             fillBlock,
-            mandate.minimumFillAmount,
             mandate.baselinePriorityFee,
             mandate.scalingFactor
         );
@@ -609,7 +723,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             sponsorSignature,
             allocatorSignature,
             mandateHash,
-            fillAmount,
+            fillAmounts,
             claimant,
             claimAmounts,
             adjustment
@@ -625,10 +739,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Send the tokens to the recipient.
-        _processFill(mandate, fillAmount);
+        _processFill(mandate, fillAmounts);
 
         // Perform the callback to the recipient if one has been provided.
-        performRecipientCallback(mandate, claimHash, mandateHash, fillAmount);
+        performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
 
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
@@ -644,11 +758,20 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         bytes32 mandateHash,
-        uint256 fillAmount,
+        uint256[] memory fillAmounts,
         bytes32 claimant,
         uint256[] memory claimAmounts,
         Adjustment calldata adjustment
     ) internal returns (bytes32 claimHash) {
+        // Build FillRecipient array from components
+        FillRecipient[] memory fillRecipients = new FillRecipient[](mandate.components.length);
+        for (uint256 i = 0; i < mandate.components.length; i++) {
+            fillRecipients[i] = FillRecipient({
+                fillAmount: fillAmounts[i],
+                recipient: mandate.components[i].recipient
+            });
+        }
+
         if (block.chainid == chainId && block.chainid == mandate.chainId) {
             claimHash = _singleChainFill(
                 compact,
@@ -656,7 +779,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 sponsorSignature,
                 allocatorSignature,
                 mandateHash,
-                fillAmount,
+                fillAmounts,
                 claimant,
                 claimAmounts
             );
@@ -666,7 +789,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 compact.sponsor,
                 address(uint160(uint256(claimant))),
                 claimHash,
-                fillAmount,
+                fillRecipients,
                 claimAmounts,
                 adjustment.targetBlock
             );
@@ -698,7 +821,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 compact.sponsor,
                 address(uint160(uint256(claimant))),
                 claimHash,
-                fillAmount,
+                fillRecipients,
                 claimAmounts,
                 adjustment.targetBlock
             );
@@ -709,17 +832,19 @@ contract Tribunal is BlockNumberish, ITribunal {
         Fill calldata mandate,
         bytes32 claimHash,
         bytes32 mandateHash,
-        uint256 fillAmount
+        uint256[] memory fillAmounts
     ) internal {
-        if (mandate.recipientCallback.length != 0) {
+        if (mandate.recipientCallback.length != 0 && mandate.components.length > 0) {
             RecipientCallback calldata callback = mandate.recipientCallback[0];
+            // Use the first component for callback
+            FillComponent calldata component = mandate.components[0];
             if (
-                IRecipientCallback(mandate.recipient).tribunalCallback(
+                IRecipientCallback(component.recipient).tribunalCallback(
                     callback.chainId,
                     claimHash,
                     mandateHash,
-                    mandate.fillToken,
-                    fillAmount,
+                    component.fillToken,
+                    fillAmounts[0],
                     callback.compact,
                     callback.mandateHash,
                     callback.context
@@ -736,7 +861,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         bytes32 mandateHash,
-        uint256 fillAmount,
+        uint256[] memory fillAmounts,
         bytes32 claimant,
         uint256[] memory claimAmounts
     ) internal returns (bytes32 claimHash) {
@@ -766,27 +891,36 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Do a callback to the sender
-        ITribunalCallback(msg.sender).tribunalCallback(
-            claimHash,
-            compact.commitments,
-            claimAmounts,
-            mandate.fillToken,
-            mandate.minimumFillAmount,
-            fillAmount
-        );
+        // Use first component for callback (if exists)
+        if (mandate.components.length > 0) {
+            ITribunalCallback(msg.sender).tribunalCallback(
+                claimHash,
+                compact.commitments,
+                claimAmounts,
+                mandate.components[0].fillToken,
+                mandate.components[0].minimumFillAmount,
+                fillAmounts[0]
+            );
+        }
 
         return claimHash;
     }
 
-    function _processFill(Fill calldata mandate, uint256 fillAmount) internal {
-        // Handle native token withdrawals directly.
-        if (mandate.fillToken == address(0)) {
-            mandate.recipient.safeTransferETH(fillAmount);
-        } else {
-            // NOTE: Settling fee-on-transfer tokens will result in fewer tokens
-            // being received by the recipient. Be sure to acommodate for this when
-            // providing the desired fill amount.
-            mandate.fillToken.safeTransferFrom(msg.sender, mandate.recipient, fillAmount);
+    function _processFill(Fill calldata mandate, uint256[] memory fillAmounts) internal {
+        // Process each fill component
+        for (uint256 i = 0; i < mandate.components.length; i++) {
+            FillComponent calldata component = mandate.components[i];
+            uint256 componentAmount = fillAmounts[i];
+            
+            // Handle native token withdrawals directly.
+            if (component.fillToken == address(0)) {
+                component.recipient.safeTransferETH(componentAmount);
+            } else {
+                // NOTE: Settling fee-on-transfer tokens will result in fewer tokens
+                // being received by the recipient. Be sure to acommodate for this when
+                // providing the desired fill amount.
+                component.fillToken.safeTransferFrom(msg.sender, component.recipient, componentAmount);
+            }
         }
     }
 
@@ -901,14 +1035,14 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Derive fill and claim amounts.
-        uint256 fillAmount;
+        uint256[] memory fillAmounts;
         uint256[] memory claimAmounts;
-        (fillAmount, claimAmounts) = deriveAmounts(
+        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
             compact.commitments,
+            mandate.components,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
             fillBlock,
-            mandate.minimumFillAmount,
             mandate.baselinePriorityFee,
             mandate.scalingFactor
         );
