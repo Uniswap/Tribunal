@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH, ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
@@ -65,16 +65,22 @@ contract TribunalFillRevertsTest is Test {
     }
 
     function test_fillRevertsOnInvalidTargetBlock() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 0,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -128,16 +134,22 @@ contract TribunalFillRevertsTest is Test {
     }
 
     function test_FillRevertsOnExpiredMandate() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -187,16 +199,22 @@ contract TribunalFillRevertsTest is Test {
     }
 
     function test_FillRevertsOnReusedClaim() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0), // Use native token
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -267,16 +285,22 @@ contract TribunalFillRevertsTest is Test {
     }
 
     function test_FillRevertsOnInvalidGasPrice() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });

@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback, FillRecipient} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
@@ -32,16 +32,22 @@ contract TribunalCancelTest is Test {
     }
 
     function test_cancelSuccessfully() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -140,16 +146,22 @@ contract TribunalCancelTest is Test {
 
     function test_cancelRevertsOnInvalidSponsor(address attacker) public {
         vm.assume(attacker != sponsor);
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -181,16 +193,22 @@ contract TribunalCancelTest is Test {
     }
 
     function test_cancelRevertsOnFilledClaim() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -264,13 +282,19 @@ contract TribunalCancelTest is Test {
         uint256[] memory claimAmounts = new uint256[](1);
         claimAmounts[0] = commitments[0].amount;
 
+        FillRecipient[] memory fillRecipients = new FillRecipient[](1);
+        fillRecipients[0] = FillRecipient({
+            fillAmount: 1 ether,
+            recipient: address(0xBEEF)
+        });
+
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
             claim.chainId,
             sponsor,
             address(this),
             claimHash,
-            1 ether,
+            fillRecipients,
             claimAmounts,
             adjustment.targetBlock
         );
@@ -286,8 +310,8 @@ contract TribunalCancelTest is Test {
             0
         );
 
-        assertEq(address(0xBEEF).balance, fill.minimumFillAmount);
-        assertEq(address(this).balance, initialSenderBalance - fill.minimumFillAmount);
+        assertEq(address(0xBEEF).balance, fill.components[0].minimumFillAmount);
+        assertEq(address(this).balance, initialSenderBalance - fill.components[0].minimumFillAmount);
 
         vm.prank(sponsor);
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
@@ -295,16 +319,22 @@ contract TribunalCancelTest is Test {
     }
 
     function test_cancelRevertsOnExpiredMandate(uint8 expires) public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(expires),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -337,16 +367,22 @@ contract TribunalCancelTest is Test {
     }
 
     function test_cancelSuccessfullyChainExclusive() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });

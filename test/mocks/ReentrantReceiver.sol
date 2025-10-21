@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {Tribunal} from "../../src/Tribunal.sol";
 import {ITribunal} from "../../src/interfaces/ITribunal.sol";
-import {Mandate, Fill, RecipientCallback, Adjustment} from "../../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, RecipientCallback, Adjustment} from "../../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 contract ReentrantReceiver {
@@ -28,16 +28,22 @@ contract ReentrantReceiver {
             allocatorSignature: new bytes(0)
         });
         _mandate = Mandate({adjuster: address(this), fills: new Fill[](1)});
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 0,
+            recipient: address(this),
+            applyScaling: true
+        });
+        
         _mandate.fills[0] = Fill({
             chainId: block.chainid,
             tribunal: address(_TRIBUNAL),
             expires: type(uint32).max,
-            fillToken: address(0),
-            minimumFillAmount: 0,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18,
             priceCurve: new uint256[](0),
-            recipient: address(this),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });

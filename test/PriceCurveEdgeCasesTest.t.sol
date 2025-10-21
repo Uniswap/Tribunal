@@ -5,7 +5,7 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {PriceCurveTestHelper} from "./helpers/PriceCurveTestHelper.sol";
 
@@ -403,16 +403,22 @@ contract PriceCurveEdgeCasesTest is Test {
         baseCurve[0] = (100 << 240) | uint256(1.2e18); // Base: 1.2x
 
         // Create a mock Fill to get supplemental curve applied
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(this),
+            applyScaling: true
+        });
+        
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: block.timestamp + 1 hours,
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18,
             priceCurve: baseCurve,
-            recipient: address(this),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(0)
         });
@@ -431,7 +437,7 @@ contract PriceCurveEdgeCasesTest is Test {
             fill.priceCurve,
             adjustment.targetBlock,
             adjustment.targetBlock, // At start of curve
-            fill.minimumFillAmount,
+            fill.components[0].minimumFillAmount,
             fill.baselinePriorityFee,
             fill.scalingFactor
         );
