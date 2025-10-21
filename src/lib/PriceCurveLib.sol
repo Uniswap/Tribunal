@@ -118,6 +118,36 @@ library PriceCurveLib {
         }
     }
 
+    function applyMemorySupplementalPriceCurve(
+        uint256[] memory parameters,
+        uint256[] memory supplementalParameters
+    ) internal pure returns (uint256[] memory combinedParameters) {
+        combinedParameters = new uint256[](parameters.length);
+        uint256 errorBuffer = 0;
+        uint256 applicationRange = parameters.length.min(supplementalParameters.length);
+        for (uint256 i = 0; i < applicationRange; ++i) {
+            (uint256 duration, uint256 scalingFactor) =
+                getComponents(PriceCurveElement.wrap(parameters[i]));
+            uint256 supplementalScalingFactor = supplementalParameters[i];
+
+            uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
+
+            errorBuffer |= (!scalingFactor.sharesScalingDirection(supplementalScalingFactor))
+                .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
+
+            combinedParameters[i] =
+                PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
+        }
+
+        if (errorBuffer != 0) {
+            revert InvalidPriceCurveParameters();
+        }
+
+        for (uint256 i = applicationRange; i < parameters.length; ++i) {
+            combinedParameters[i] = parameters[i];
+        }
+    }
+
     /**
      * @dev Calculate the current scaling factor value based on block progression
      * @param parameters Array of DecayParameters to process sequentially
