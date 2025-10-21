@@ -109,24 +109,27 @@ string constant COMPACT_WITH_MANDATE_TYPESTRING =
 string constant ADJUSTMENT_TYPESTRING =
     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)";
 
-// Typehash constants (these should match the values in Tribunal.sol)
-bytes32 constant MANDATE_TYPEHASH = keccak256(bytes(MANDATE_TYPESTRING));
+// Typehash constants (hardcoded to reduce init code size)
+bytes32 constant MANDATE_TYPEHASH =
+    0xd98eceb6e5c7770b3b664a99c269855402fe5255294a30970d25376caea662c6;
 
-bytes32 constant MANDATE_FILL_TYPEHASH = keccak256(bytes(MANDATE_FILL_TYPESTRING));
+bytes32 constant MANDATE_FILL_TYPEHASH =
+    0x1d0ee69a7bc1ac54d9a6b38f32ab156fbfe09a9098843d54f89e7b1033533d33;
 
 bytes32 constant MANDATE_FILL_COMPONENT_TYPEHASH =
-    keccak256(bytes(MANDATE_FILL_COMPONENT_TYPESTRING));
+    0x97a135285706d21a6b74ac159b77b16cea827acc358fc6c33e430ce0a85fe9d6;
 
 bytes32 constant MANDATE_RECIPIENT_CALLBACK_TYPEHASH =
-    keccak256(bytes(MANDATE_RECIPIENT_CALLBACK_TYPESTRING));
+    0xb60a17eb6828a433f2f2fcbeb119166fa25e1fb6ae3866e33952bb74f5055031;
 
 bytes32 constant MANDATE_BATCH_COMPACT_TYPEHASH =
-    keccak256(bytes(MANDATE_BATCH_COMPACT_TYPESTRING));
+    0x75d7205b7ec9e9b203d9161387d95a46c8440f4530dceab1bb28d4194a586227;
 
 bytes32 constant MANDATE_LOCK_TYPEHASH =
     0xce4f0854d9091f37d9dfb64592eee0de534c6680a5444fd55739b61228a6e0b0;
 
-bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE = keccak256(bytes(COMPACT_WITH_MANDATE_TYPESTRING));
+bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
+    0xdbbdcf42471b4a26f7824df9f33f0a4f9bb4e7a66be6a31be8868a6cbbec0a7d;
 
 bytes32 constant ADJUSTMENT_TYPEHASH =
     0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414;
