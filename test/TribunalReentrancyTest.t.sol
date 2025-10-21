@@ -11,7 +11,7 @@ import {ReentrantReceiver} from "./mocks/ReentrantReceiver.sol";
 import {FillerContract} from "./mocks/FillerContract.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
 
 contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
@@ -146,16 +146,22 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
 
         ReentrantReceiver reentrantReceiver = new ReentrantReceiver{value: 10 ether}(tribunal);
 
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(reentrantReceiver),
+            applyScaling: false
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(reentrantReceiver),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -257,7 +263,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
 
         // Verify that the first fill succeeded and the recipient received the funds
         assertEq(
-            address(reentrantReceiver).balance, initialRecipientBalance + fill.minimumFillAmount
+            address(reentrantReceiver).balance, initialRecipientBalance + components[0].minimumFillAmount
         );
         assertEq(address(filler).balance, initialFillerBalance); // Filler balance unchanged (paid 1 ether, received 1 ether from TheCompact)
     }

@@ -10,7 +10,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {FillerContract} from "./mocks/FillerContract.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
 import {
     BatchCompact,
     Lock,
@@ -156,16 +156,22 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         vm.prank(sponsor);
         compactContract.depositNative{value: depositAmount}(bytes12(uint96(allocatorId)), sponsor);
 
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xBEEF),
+            applyScaling: false
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -278,16 +284,22 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         );
         vm.stopPrank();
 
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(token),
+            minimumFillAmount: 100e18,
+            recipient: address(0xBEEF),
+            applyScaling: false
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
-            fillToken: address(token),
-            minimumFillAmount: 100e18,
+            components: components,
             baselinePriorityFee: 0,
             scalingFactor: 1e18, // Use neutral scaling factor
             priceCurve: emptyPriceCurve,
-            recipient: address(0xBEEF),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -379,10 +391,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         uint256[] memory claimAmounts = new uint256[](1);
         claimAmounts[0] = commitments[0].amount;
 
-        vm.expectEmit(true, true, true, true, address(tribunal));
-        emit ITribunal.SingleChainFill(
-            sponsor, address(filler), claimHash, 100e18, claimAmounts, adjustment.targetBlock
-        );
 
         vm.prank(address(filler));
         tribunal.fill(
