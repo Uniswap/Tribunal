@@ -7,17 +7,17 @@ import "../src/types/TribunalTypeHashes.sol";
 contract TribunalTypeHashesTest is Test {
     // Expected hash values from Tribunal.sol
     bytes32 constant EXPECTED_MANDATE_TYPEHASH =
-        0x78eb489c4f76cd1d9bc735e1f4e8369b94ed75b11b35b0d5882f9c4c856a7a90;
+        0xd98eceb6e5c7770b3b664a99c269855402fe5255294a30970d25376caea662c6;
     bytes32 constant EXPECTED_MANDATE_FILL_TYPEHASH =
-        0x02ccd0f55bde7e5174b479837dce09e4f95101b3b6dfc43be8d6d42a9bd66590;
+        0x1d0ee69a7bc1ac54d9a6b38f32ab156fbfe09a9098843d54f89e7b1033533d33;
     bytes32 constant EXPECTED_MANDATE_RECIPIENT_CALLBACK_TYPEHASH =
-        0x4fc45936139e9bc61053b9f1f238d4205ccd3dddaf02907ca21557ffd35160ae;
+        0xb60a17eb6828a433f2f2fcbeb119166fa25e1fb6ae3866e33952bb74f5055031;
     bytes32 constant EXPECTED_MANDATE_BATCH_COMPACT_TYPEHASH =
-        0xd1b7b490818c27a08c0bf3264fa04437fb7d4e669ade6acb8e5dde31e2d0b1c2;
+        0x75d7205b7ec9e9b203d9161387d95a46c8440f4530dceab1bb28d4194a586227;
     bytes32 constant EXPECTED_MANDATE_LOCK_TYPEHASH =
         0xce4f0854d9091f37d9dfb64592eee0de534c6680a5444fd55739b61228a6e0b0;
     bytes32 constant EXPECTED_COMPACT_TYPEHASH_WITH_MANDATE =
-        0xab0a4c35b998b2b78c7b8f899e1423371e4fbed77d7c8e4fc3b03816cea512a5;
+        0xdbbdcf42471b4a26f7824df9f33f0a4f9bb4e7a66be6a31be8868a6cbbec0a7d;
     bytes32 constant EXPECTED_ADJUSTMENT_TYPEHASH =
         0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414;
 

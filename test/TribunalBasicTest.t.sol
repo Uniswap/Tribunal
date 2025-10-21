@@ -19,13 +19,11 @@ contract TribunalBasicTest is Test {
 
     uint256[] public emptyPriceCurve;
 
-    bytes32 constant MANDATE_TYPEHASH = keccak256(
-        "Mandate(address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context)"
-    );
+    bytes32 constant MANDATE_TYPEHASH =
+        0xd98eceb6e5c7770b3b664a99c269855402fe5255294a30970d25376caea662c6;
 
-    bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE = keccak256(
-        "BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Lock[] commitments,Mandate mandate)Lock(bytes12 lockTag,address token,uint256 amount)Mandate(address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context)"
-    );
+    bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
+        0xdbbdcf42471b4a26f7824df9f33f0a4f9bb4e7a66be6a31be8868a6cbbec0a7d;
 
     bytes32 constant MANDATE_LOCK_TYPEHASH =
         keccak256("Mandate_Lock(bytes12 lockTag,address token,uint256 amount)");
