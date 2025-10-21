@@ -2,7 +2,14 @@
 pragma solidity ^0.8.28;
 
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
-import {Fill, FillComponent, Adjustment, Mandate, RecipientCallback, FillRecipient} from "../types/TribunalStructs.sol";
+import {
+    Fill,
+    FillComponent,
+    Adjustment,
+    Mandate,
+    RecipientCallback,
+    FillRecipient
+} from "../types/TribunalStructs.sol";
 
 /**
  * @title ITribunal
@@ -230,7 +237,10 @@ interface ITribunal {
      * @param component The fill component containing all hash parameters.
      * @return The derived fill component hash.
      */
-    function deriveFillComponentHash(FillComponent calldata component) external pure returns (bytes32);
+    function deriveFillComponentHash(FillComponent calldata component)
+        external
+        pure
+        returns (bytes32);
 
     /**
      * @notice Derives a recipient callback hash using EIP-712 typed data.

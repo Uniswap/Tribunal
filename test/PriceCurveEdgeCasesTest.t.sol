@@ -5,7 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {PriceCurveTestHelper} from "./helpers/PriceCurveTestHelper.sol";
 
@@ -410,7 +416,7 @@ contract PriceCurveEdgeCasesTest is Test {
             recipient: address(this),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),

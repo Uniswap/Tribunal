@@ -7,7 +7,14 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback, FillRecipient} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback,
+    FillRecipient
+} from "../src/types/TribunalStructs.sol";
 import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {TheCompact} from "the-compact/src/TheCompact.sol";
@@ -160,7 +167,7 @@ abstract contract MockSetup is Test {
             recipient: sponsor,
             applyScaling: true
         });
-        
+
         return Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -260,7 +267,11 @@ contract ERC7683Tribunal_Fill is MockSetup {
         tribunal.fill(
             order.orderId,
             abi.encode(
-                _getClaim(), mandate.fills[0], mandate.adjuster, fillHashes, 1 /* invalid input */
+                _getClaim(),
+                mandate.fills[0],
+                mandate.adjuster,
+                fillHashes,
+                1 /* invalid input */
             ),
             fillerData
         );
@@ -286,7 +297,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
             recipient: sponsor,
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -420,10 +431,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
         bytes memory fillerData = _getFillerData();
 
         FillRecipient[] memory fillRecipients = new FillRecipient[](1);
-        fillRecipients[0] = FillRecipient({
-            fillAmount: minimumFillAmount,
-            recipient: sponsor
-        });
+        fillRecipients[0] = FillRecipient({fillAmount: minimumFillAmount, recipient: sponsor});
 
         vm.prank(filler_);
         vm.expectEmit(true, true, true, true, address(tribunal));

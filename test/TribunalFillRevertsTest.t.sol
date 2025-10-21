@@ -5,7 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH, ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
@@ -72,7 +78,7 @@ contract TribunalFillRevertsTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -121,7 +127,9 @@ contract TribunalFillRevertsTest is Test {
                 vm.getBlockNumber() + 100
             )
         );
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -141,7 +149,7 @@ contract TribunalFillRevertsTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -206,7 +214,7 @@ contract TribunalFillRevertsTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -260,7 +268,9 @@ contract TribunalFillRevertsTest is Test {
         bytes memory adjustmentSignature = signAdjustment(adjustment, claimHash, adjusterPrivateKey);
 
         // Send ETH with the first fill
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -272,7 +282,9 @@ contract TribunalFillRevertsTest is Test {
         );
 
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -292,7 +304,7 @@ contract TribunalFillRevertsTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),

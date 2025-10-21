@@ -3,7 +3,13 @@ pragma solidity ^0.8.28;
 
 import {Tribunal} from "../../src/Tribunal.sol";
 import {ITribunal} from "../../src/interfaces/ITribunal.sol";
-import {Mandate, Fill, FillComponent, RecipientCallback, Adjustment} from "../../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    RecipientCallback,
+    Adjustment
+} from "../../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 contract ReentrantReceiver {
@@ -35,7 +41,7 @@ contract ReentrantReceiver {
             recipient: address(this),
             applyScaling: true
         });
-        
+
         _mandate.fills[0] = Fill({
             chainId: block.chainid,
             tribunal: address(_TRIBUNAL),
@@ -70,7 +76,9 @@ contract ReentrantReceiver {
             block.number
         );
         uint256 balanceBefore = address(this).balance;
-        try _TRIBUNAL.fill{value: quote}(
+        try _TRIBUNAL.fill{
+            value: quote
+        }(
             _claim,
             _mandate.fills[0],
             address(this),

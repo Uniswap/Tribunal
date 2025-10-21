@@ -5,7 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback, FillRecipient} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback,
+    FillRecipient
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
@@ -39,7 +46,7 @@ contract TribunalCancelTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -129,7 +136,9 @@ contract TribunalCancelTest is Test {
 
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -153,7 +162,7 @@ contract TribunalCancelTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -200,7 +209,7 @@ contract TribunalCancelTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -283,10 +292,7 @@ contract TribunalCancelTest is Test {
         claimAmounts[0] = commitments[0].amount;
 
         FillRecipient[] memory fillRecipients = new FillRecipient[](1);
-        fillRecipients[0] = FillRecipient({
-            fillAmount: 1 ether,
-            recipient: address(0xBEEF)
-        });
+        fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xBEEF)});
 
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
@@ -299,7 +305,9 @@ contract TribunalCancelTest is Test {
             adjustment.targetBlock
         );
 
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -326,7 +334,7 @@ contract TribunalCancelTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -374,7 +382,7 @@ contract TribunalCancelTest is Test {
             recipient: address(0xBEEF),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -466,7 +474,9 @@ contract TribunalCancelTest is Test {
 
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.fill{value: 2 ether}(
+        tribunal.fill{
+            value: 2 ether
+        }(
             claim,
             fill,
             adjuster,

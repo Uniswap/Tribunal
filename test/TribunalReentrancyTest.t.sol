@@ -11,7 +11,13 @@ import {ReentrantReceiver} from "./mocks/ReentrantReceiver.sol";
 import {FillerContract} from "./mocks/FillerContract.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
 
 contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
@@ -87,7 +93,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
 
         // Import the actual witness typestring that Tribunal sends
         string memory witnessTypestring =
-            "address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context";
+            "address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,Mandate_FillComponent[] components,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_FillComponent(address fillToken,uint256 minimumFillAmount,address recipient,bool applyScaling)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context";
 
         // Construct the full typestring as TheCompact would
         string memory fullTypestring = string.concat(
@@ -250,7 +256,9 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         // The first fill should succeed despite the reentrancy attempt
         // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         vm.prank(address(filler));
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,
@@ -263,7 +271,8 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
 
         // Verify that the first fill succeeded and the recipient received the funds
         assertEq(
-            address(reentrantReceiver).balance, initialRecipientBalance + components[0].minimumFillAmount
+            address(reentrantReceiver).balance,
+            initialRecipientBalance + components[0].minimumFillAmount
         );
         assertEq(address(filler).balance, initialFillerBalance); // Filler balance unchanged (paid 1 ether, received 1 ether from TheCompact)
     }

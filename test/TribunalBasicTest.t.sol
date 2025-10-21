@@ -5,7 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {WITNESS_TYPESTRING} from "../src/types/TribunalTypeHashes.sol";
 
@@ -28,7 +34,8 @@ contract TribunalBasicTest is Test {
     bytes32 constant MANDATE_LOCK_TYPEHASH =
         keccak256("Mandate_Lock(bytes12 lockTag,address token,uint256 amount)");
 
-    bytes32 constant LOCK_TYPEHASH = keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
+    bytes32 constant LOCK_TYPEHASH =
+        keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
 
     receive() external payable {}
 
@@ -53,7 +60,7 @@ contract TribunalBasicTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -84,7 +91,7 @@ contract TribunalBasicTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
@@ -115,7 +122,7 @@ contract TribunalBasicTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),

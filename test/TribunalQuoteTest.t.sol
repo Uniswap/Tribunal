@@ -5,7 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, FillComponent, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 contract TribunalQuoteTest is Test {
@@ -37,7 +43,7 @@ contract TribunalQuoteTest is Test {
             recipient: address(0xCAFE),
             applyScaling: true
         });
-        
+
         Fill memory fill = Fill({
             chainId: block.chainid + 1, // Different chain for cross-chain quote
             tribunal: address(tribunal),

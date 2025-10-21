@@ -110,11 +110,9 @@ string constant ADJUSTMENT_TYPESTRING =
     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)";
 
 // Typehash constants (these should match the values in Tribunal.sol)
-bytes32 constant MANDATE_TYPEHASH =
-    keccak256(bytes(MANDATE_TYPESTRING));
+bytes32 constant MANDATE_TYPEHASH = keccak256(bytes(MANDATE_TYPESTRING));
 
-bytes32 constant MANDATE_FILL_TYPEHASH =
-    keccak256(bytes(MANDATE_FILL_TYPESTRING));
+bytes32 constant MANDATE_FILL_TYPEHASH = keccak256(bytes(MANDATE_FILL_TYPESTRING));
 
 bytes32 constant MANDATE_FILL_COMPONENT_TYPEHASH =
     keccak256(bytes(MANDATE_FILL_COMPONENT_TYPESTRING));
@@ -128,8 +126,7 @@ bytes32 constant MANDATE_BATCH_COMPACT_TYPEHASH =
 bytes32 constant MANDATE_LOCK_TYPEHASH =
     0xce4f0854d9091f37d9dfb64592eee0de534c6680a5444fd55739b61228a6e0b0;
 
-bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
-    keccak256(bytes(COMPACT_WITH_MANDATE_TYPESTRING));
+bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE = keccak256(bytes(COMPACT_WITH_MANDATE_TYPESTRING));
 
 bytes32 constant ADJUSTMENT_TYPEHASH =
     0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414;
