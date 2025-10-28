@@ -46,7 +46,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
     // Event definitions for testing
     event SingleChainFill(
         address indexed sponsor,
-        address indexed claimant,
+        bytes32 indexed claimant,
         bytes32 claimHash,
         FillRecipient[] fillRecipients,
         uint256[] claimAmounts,
@@ -297,7 +297,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         vm.expectEmit(true, true, false, true);
         emit SingleChainFill(
             sponsor,
-            address(filler),
+            bytes32(uint256(uint160(address(filler)))),
             claimHash,
             expectedFillRecipients,
             expectedClaimAmounts,

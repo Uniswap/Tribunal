@@ -86,7 +86,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     // ======== Storage ========
     /// @notice Mapping of used claim hashes to claimants.
-    mapping(bytes32 => address) private _dispositions;
+    mapping(bytes32 => bytes32) private _dispositions;
 
     // ======== Modifiers ========
     modifier nonReentrant() {
@@ -177,16 +177,18 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
         Lock calldata commitment = compact.commitments[0];
 
-        address claimant = _dispositions[sourceClaimHash];
+        bytes32 claimant = _dispositions[sourceClaimHash];
 
         // An available claimant indicates a fill, transfer all available tokens to the claimant
-        if (claimant != address(0)) {
+        if (claimant != bytes32(0)) {
             if (commitment.token == address(0)) {
                 // Handle native token
-                SafeTransferLib.safeTransferETH(claimant, address(this).balance);
+                SafeTransferLib.safeTransferETH(
+                    address(uint160(uint256(claimant))), address(this).balance
+                );
             } else {
                 // Handle ERC20 tokens
-                commitment.token.safeTransferAll(claimant);
+                commitment.token.safeTransferAll(address(uint160(uint256(claimant))));
             }
 
             return bytes32(0);
@@ -356,7 +358,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function filled(bytes32 claimHash) external view returns (address) {
+    function filled(bytes32 claimHash) external view returns (bytes32) {
         return _dispositions[claimHash];
     }
 
@@ -798,7 +800,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             // Emit the fill event.
             emit SingleChainFill(
                 compact.sponsor,
-                address(uint160(uint256(claimant))),
+                claimant,
                 claimHash,
                 fillRecipients,
                 claimAmounts,
@@ -807,12 +809,12 @@ contract Tribunal is BlockNumberish, ITribunal {
         } else {
             // Derive and check claim hash.
             claimHash = deriveClaimHash(compact, mandateHash);
-            if (_dispositions[claimHash] != address(0)) {
+            if (_dispositions[claimHash] != bytes32(0)) {
                 revert AlreadyClaimed();
             }
 
             // Set the disposition for the given claim hash.
-            _dispositions[claimHash] = address(uint160(uint256(claimant)));
+            _dispositions[claimHash] = claimant;
 
             // Process the directive.
             _processDirective(
@@ -830,7 +832,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             emit CrossChainFill(
                 chainId,
                 compact.sponsor,
-                address(uint160(uint256(claimant))),
+                claimant,
                 claimHash,
                 fillRecipients,
                 claimAmounts,
@@ -953,10 +955,10 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Derive and check claim hash.
         claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != address(0)) {
+        if (_dispositions[claimHash] != bytes32(0)) {
             revert AlreadyClaimed();
         }
-        _dispositions[claimHash] = msg.sender;
+        _dispositions[claimHash] = bytes32(uint256(uint160(msg.sender)));
 
         // Emit the cancel event.
         emit Cancel(compact.sponsor, claimHash);
@@ -1045,7 +1047,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Derive and check claim hash
         bytes32 claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != address(0)) {
+        if (_dispositions[claimHash] != bytes32(0)) {
             revert AlreadyClaimed();
         }
 
