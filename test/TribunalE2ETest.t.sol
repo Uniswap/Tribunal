@@ -451,7 +451,7 @@ contract TribunalE2ETest is DeployTheCompact {
         vm.stopPrank();
 
         // Verify the fill was recorded
-        assertEq(tribunalChain2.filled(returnedClaimHash), filler);
+        assertEq(tribunalChain2.filled(returnedClaimHash), bytes32(uint256(uint160(filler))));
         assertEq(fillAmounts[0], FILL_AMOUNT);
     }
 

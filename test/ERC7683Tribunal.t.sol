@@ -436,7 +436,13 @@ contract ERC7683Tribunal_Fill is MockSetup {
         vm.prank(filler_);
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
-            sourceChainId, sponsor, filler, claimHash, fillRecipients, claimAmounts, targetBlock
+            sourceChainId,
+            sponsor,
+            bytes32(uint256(uint160(filler))),
+            claimHash,
+            fillRecipients,
+            claimAmounts,
+            targetBlock
         );
         tribunal.fill(order.orderId, order.fillInstructions[0].originData, fillerData);
     }

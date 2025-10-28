@@ -92,7 +92,7 @@ contract TribunalFilledTest is Test {
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        assertEq(tribunal.filled(claimHash), address(0));
+        assertEq(tribunal.filled(claimHash), bytes32(0));
 
         uint256[] memory claimAmounts = new uint256[](1);
         claimAmounts[0] = commitments[0].amount;
@@ -113,7 +113,7 @@ contract TribunalFilledTest is Test {
         emit ITribunal.CrossChainFill(
             claim.chainId,
             sponsor,
-            address(this),
+            bytes32(uint256(uint160(address(this)))),
             actualClaimHash,
             fillRecipients,
             claimAmounts,
@@ -162,6 +162,6 @@ contract TribunalFilledTest is Test {
             bytes32(uint256(uint160(address(this)))),
             0
         );
-        assertEq(tribunal.filled(actualClaimHash), address(this));
+        assertEq(tribunal.filled(actualClaimHash), bytes32(uint256(uint160(address(this)))));
     }
 }

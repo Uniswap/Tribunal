@@ -298,7 +298,7 @@ contract TribunalCancelTest is Test {
         emit ITribunal.CrossChainFill(
             claim.chainId,
             sponsor,
-            address(this),
+            bytes32(uint256(uint160(address(this)))),
             claimHash,
             fillRecipients,
             claimAmounts,

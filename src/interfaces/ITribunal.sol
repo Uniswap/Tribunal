@@ -23,7 +23,7 @@ interface ITribunal {
      * @notice Emitted when a cross-chain fill is successfully executed.
      * @param chainId The chain ID where the claim will be processed.
      * @param sponsor The address that created the compact to be claimed.
-     * @param claimant The address that will receive tokens on the claim chain.
+     * @param claimant The bytes32 value representing the claimant (lock tag ++ address).
      * @param claimHash The hash of the compact being claimed.
      * @param fillRecipients Array of fill amounts and their corresponding recipients.
      * @param claimAmounts The amounts of tokens to be claimed on the source chain.
@@ -32,7 +32,7 @@ interface ITribunal {
     event CrossChainFill(
         uint256 indexed chainId,
         address indexed sponsor,
-        address indexed claimant,
+        bytes32 indexed claimant,
         bytes32 claimHash,
         FillRecipient[] fillRecipients,
         uint256[] claimAmounts,
@@ -42,7 +42,7 @@ interface ITribunal {
     /**
      * @notice Emitted when a single-chain fill is successfully executed.
      * @param sponsor The address that created the compact to be claimed.
-     * @param claimant The address that receives the tokens and optionally a callback.
+     * @param claimant The bytes32 value representing the claimant (lock tag ++ address).
      * @param claimHash The hash of the compact being claimed.
      * @param fillRecipients Array of fill amounts and their corresponding recipients.
      * @param claimAmounts The amounts of tokens claimed.
@@ -50,7 +50,7 @@ interface ITribunal {
      */
     event SingleChainFill(
         address indexed sponsor,
-        address indexed claimant,
+        bytes32 indexed claimant,
         bytes32 claimHash,
         FillRecipient[] fillRecipients,
         uint256[] claimAmounts,
@@ -207,9 +207,9 @@ interface ITribunal {
     /**
      * @notice Check if a claim has been filled.
      * @param claimHash The hash of the claim to check.
-     * @return The claimant account provided by the filler if the claim has been filled, or the sponsor if it is cancelled.
+     * @return The claimant bytes32 value provided by the filler if the claim has been filled, or the sponsor if it is cancelled.
      */
-    function filled(bytes32 claimHash) external view returns (address);
+    function filled(bytes32 claimHash) external view returns (bytes32);
 
     /**
      * @notice Derives the mandate hash using EIP-712 typed data.
