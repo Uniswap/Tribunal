@@ -313,8 +313,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             claim.compact,
             claim.sponsorSignature,
             claim.allocatorSignature,
-            mandateHash,
-            true
+            mandateHash
         );
     }
 
@@ -329,36 +328,11 @@ contract Tribunal is BlockNumberish, ITribunal {
             compact,
             LibBytes.emptyCalldata(), // sponsorSignature
             LibBytes.emptyCalldata(), // allocatorSignature
-            mandateHash,
-            false
+            mandateHash
         );
     }
 
     // ======== External View Functions ========
-
-    /// @inheritdoc ITribunal
-    function quote(
-        BatchClaim calldata claim,
-        Fill calldata mandate,
-        address adjuster,
-        Adjustment calldata adjustment,
-        bytes32[] calldata fillHashes,
-        bytes32 claimant,
-        uint256 fillBlock
-    ) external view returns (uint256 dispensation) {
-        return _quote(
-            claim.chainId,
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandate,
-            adjuster,
-            adjustment,
-            fillBlock,
-            claimant,
-            fillHashes
-        );
-    }
 
     /// @inheritdoc ITribunal
     function filled(bytes32 claimHash) external view returns (bytes32) {
@@ -842,18 +816,6 @@ contract Tribunal is BlockNumberish, ITribunal {
             // Set the disposition for the given claim hash.
             _dispositions[claimHash] = claimant;
 
-            // Process the directive.
-            _processDirective(
-                chainId,
-                compact,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                claimant,
-                claimAmounts,
-                adjustment.targetBlock
-            );
-
             // Emit the fill event.
             emit CrossChainFill(
                 chainId,
@@ -971,8 +933,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         BatchCompact calldata compact,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bool directive
+        bytes32 mandateHash
     ) internal returns (bytes32 claimHash) {
         // Ensure the claim can only be canceled by the sponsor.
         if (msg.sender != compact.sponsor) {
@@ -988,20 +949,6 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Emit the cancel event.
         emit Cancel(compact.sponsor, claimHash);
-
-        if (directive) {
-            // Process the directive.
-            _processDirective(
-                chainId,
-                compact,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                bytes32(uint256(uint160(compact.sponsor))), // claimant
-                new uint256[](0), // claimAmounts
-                0 // targetBlock
-            );
-        }
 
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
@@ -1140,72 +1087,6 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
     }
 
-    /**
-     * @notice Internal implementation of the quote function.
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandate The fill conditions and amount derivation parameters.
-     * @param fillBlock The block where the fill will be performed.
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @return dispensation The suggested dispensation amount.
-     */
-    function _quote(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        Fill calldata mandate,
-        address adjuster,
-        Adjustment calldata adjustment,
-        uint256 fillBlock,
-        bytes32 claimant,
-        bytes32[] calldata fillHashes
-    ) internal view returns (uint256 dispensation) {
-        if (chainId == block.chainid) {
-            revert QuoteInapplicableToSameChainFills();
-        }
-
-        // Ensure that the mandate has not expired.
-        mandate.expires.later();
-
-        // Derive mandate hash.
-        bytes32 mandateHash =
-            _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
-
-        // Derive and check claim hash
-        bytes32 claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != bytes32(0)) {
-            revert AlreadyClaimed();
-        }
-
-        // Derive fill and claim amounts.
-        uint256[] memory fillAmounts;
-        uint256[] memory claimAmounts;
-        (fillAmounts, claimAmounts,) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments,
-            mandate.components,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
-        );
-
-        // Process the quote.
-        dispensation = _quoteDirective(
-            chainId,
-            compact,
-            sponsorSignature,
-            allocatorSignature,
-            mandateHash,
-            claimant,
-            claimAmounts,
-            fillBlock
-        );
-    }
-
     function _checkCompactAllowance(address token, address owner)
         internal
         view
@@ -1255,65 +1136,6 @@ contract Tribunal is BlockNumberish, ITribunal {
                 priorityFee = 0;
             }
         }
-    }
-
-    /**
-     * @notice Derive the quote for any native tokens supplied to pay for dispensation (i.e. cost to trigger settlement).
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandateHash The derived mandate hash.
-     * @param claimant The address of the claimant.
-     * @param claimAmounts The amounts to claim.
-     * @return dispensation The quoted dispensation amount.
-     * @param targetBlock The targeted fill block, or 0 for no target block.
-     */
-    function _quoteDirective(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        uint256 targetBlock
-    ) internal view virtual returns (uint256 dispensation) {
-        chainId;
-        compact;
-        sponsorSignature;
-        allocatorSignature;
-        mandateHash;
-        claimant;
-        claimAmounts;
-        targetBlock;
-
-        // NOTE: Override & implement quote logic.
-        return msg.sender.balance / 1000;
-    }
-
-    /**
-     * @notice Process the mandated directive (i.e. trigger settlement).
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandateHash The derived mandate hash.
-     * @param claimant The recipient of claimed tokens on claim chain.
-     * @param claimAmounts The amounts to claim.
-     * @param targetBlock The targeted fill block, or 0 for no target block.
-     */
-    function _processDirective(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        uint256 targetBlock
-    ) internal virtual {
-        // NOTE: Override & implement directive processing.
     }
 
     // ======== Internal Pure Functions ========
