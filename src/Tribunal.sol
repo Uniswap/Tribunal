@@ -88,6 +88,9 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @notice Mapping of used claim hashes to claimants.
     mapping(bytes32 => bytes32) private _dispositions;
 
+    /// @notice Mapping of claim hashes to claim reduction scaling factors (only set when < 1e18).
+    mapping(bytes32 => uint256) private _claimReductionScalingFactors;
+
     // ======== Modifiers ========
     modifier nonReentrant() {
         assembly ("memory-safe") {
@@ -362,6 +365,23 @@ contract Tribunal is BlockNumberish, ITribunal {
         return _dispositions[claimHash];
     }
 
+    /// @notice Returns the claim reduction scaling factor for a given claim hash.
+    /// @param claimHash The claim hash to query.
+    /// @return scalingFactor The scaling factor (returns 1e18 if not set, indicating no reduction).
+    function claimReductionScalingFactor(bytes32 claimHash)
+        external
+        view
+        returns (uint256 scalingFactor)
+    {
+        uint256 storedScalingFactor = _claimReductionScalingFactors[claimHash];
+        assembly ("memory-safe") {
+            scalingFactor := or(
+                storedScalingFactor,
+                mul(iszero(storedScalingFactor), BASE_SCALING_FACTOR)
+            )
+        }
+    }
+
     // ======== External Pure Functions ========
 
     /// @inheritdoc ITribunal
@@ -541,7 +561,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 fillBlock,
         uint256 baselinePriorityFee,
         uint256 scalingFactor
-    ) public view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
+    ) external view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
         fillAmounts = new uint256[](components.length);
 
         // Calculate the common scaling values
@@ -719,7 +739,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Derive fill and claim amounts.
-        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
+        uint256 scalingMultiplier;
+        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
             compact.commitments,
             mandate.components,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
@@ -744,6 +765,11 @@ contract Tribunal is BlockNumberish, ITribunal {
             claimAmounts,
             adjustment
         );
+
+        // Store the claim reduction scaling factor if claims were reduced
+        if (scalingMultiplier < BASE_SCALING_FACTOR) {
+            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+        }
 
         if (!adjuster.isValidSignatureNow(
                 _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
@@ -987,6 +1013,109 @@ contract Tribunal is BlockNumberish, ITribunal {
     // ======== Internal View Functions ========
 
     /**
+     * @notice Internal function that derives amounts from components and returns the scaling multiplier.
+     * @param maximumClaimAmounts The maximum amounts to claim.
+     * @param components The fill components.
+     * @param priceCurve The price curve to apply.
+     * @param targetBlock The target block number.
+     * @param fillBlock The fill block number.
+     * @param baselinePriorityFee The baseline priority fee.
+     * @param scalingFactor The scaling factor.
+     * @return fillAmounts The derived fill amounts for each component.
+     * @return claimAmounts The derived claim amounts.
+     * @return scalingMultiplier The calculated scaling multiplier.
+     */
+    function _deriveAmountsFromComponentsWithScaling(
+        Lock[] calldata maximumClaimAmounts,
+        FillComponent[] calldata components,
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock,
+        uint256 baselinePriorityFee,
+        uint256 scalingFactor
+    )
+        internal
+        view
+        returns (
+            uint256[] memory fillAmounts,
+            uint256[] memory claimAmounts,
+            uint256 scalingMultiplier
+        )
+    {
+        fillAmounts = new uint256[](components.length);
+
+        // Calculate the common scaling values
+        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
+        if (targetBlock != 0) {
+            if (targetBlock > fillBlock) {
+                revert InvalidTargetBlock(fillBlock, targetBlock);
+            }
+            uint256 blocksPassed;
+            unchecked {
+                blocksPassed = fillBlock - targetBlock;
+            }
+            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
+        } else {
+            if (priceCurve.length != 0) {
+                revert InvalidTargetBlockDesignation();
+            }
+        }
+
+        if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
+            revert PriceCurveLib.InvalidPriceCurveParameters();
+        }
+
+        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+
+        // Calculate the scaling multiplier
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
+        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
+
+        if (useExactIn) {
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
+        } else {
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
+
+            // Sanity check: revert if derived scaling factor is zero
+            if (scalingMultiplier == 0) {
+                revert PriceCurveLib.InvalidPriceCurveParameters();
+            }
+        }
+
+        // Calculate fill amounts for each component
+        for (uint256 i = 0; i < components.length; i++) {
+            if (components[i].applyScaling) {
+                if (useExactIn) {
+                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
+                } else {
+                    fillAmounts[i] = components[i].minimumFillAmount;
+                }
+            } else {
+                // If not applying scaling, use the minimum amount as-is
+                fillAmounts[i] = components[i].minimumFillAmount;
+            }
+        }
+
+        // Calculate claim amounts
+        claimAmounts = new uint256[](maximumClaimAmounts.length);
+        if (useExactIn) {
+            // For exact-in, use maximum claim amounts unchanged
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
+        } else {
+            // For exact-out, apply scaling to claim amounts
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
+            }
+        }
+
+        return (fillAmounts, claimAmounts, scalingMultiplier);
+    }
+
+    /**
      * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
      * and the index of the target fill in the array.
      * @param targetFill The fill being executed.
@@ -1054,7 +1183,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Derive fill and claim amounts.
         uint256[] memory fillAmounts;
         uint256[] memory claimAmounts;
-        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
+        (fillAmounts, claimAmounts,) = _deriveAmountsFromComponentsWithScaling(
             compact.commitments,
             mandate.components,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
