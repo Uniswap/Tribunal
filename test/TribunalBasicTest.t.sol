@@ -5,7 +5,13 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {WITNESS_TYPESTRING} from "../src/types/TribunalTypeHashes.sol";
 
@@ -19,18 +25,17 @@ contract TribunalBasicTest is Test {
 
     uint256[] public emptyPriceCurve;
 
-    bytes32 constant MANDATE_TYPEHASH = keccak256(
-        "Mandate(address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context)"
-    );
+    bytes32 constant MANDATE_TYPEHASH =
+        0xd98eceb6e5c7770b3b664a99c269855402fe5255294a30970d25376caea662c6;
 
-    bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE = keccak256(
-        "BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Lock[] commitments,Mandate mandate)Lock(bytes12 lockTag,address token,uint256 amount)Mandate(address adjuster,Mandate_Fill[] fills)Mandate_BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Mandate_Lock[] commitments,Mandate mandate)Mandate_Fill(uint256 chainId,address tribunal,uint256 expires,address fillToken,uint256 minimumFillAmount,uint256 baselinePriorityFee,uint256 scalingFactor,uint256[] priceCurve,address recipient,Mandate_RecipientCallback[] recipientCallback,bytes32 salt)Mandate_Lock(bytes12 lockTag,address token,uint256 amount)Mandate_RecipientCallback(uint256 chainId,Mandate_BatchCompact compact,bytes context)"
-    );
+    bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
+        0xdbbdcf42471b4a26f7824df9f33f0a4f9bb4e7a66be6a31be8868a6cbbec0a7d;
 
     bytes32 constant MANDATE_LOCK_TYPEHASH =
         keccak256("Mandate_Lock(bytes12 lockTag,address token,uint256 amount)");
 
-    bytes32 constant LOCK_TYPEHASH = keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
+    bytes32 constant LOCK_TYPEHASH =
+        keccak256("Lock(bytes12 lockTag,address token,uint256 amount)");
 
     receive() external payable {}
 
@@ -48,16 +53,22 @@ contract TribunalBasicTest is Test {
     }
 
     function test_DeriveMandateHash() public view {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -73,16 +84,22 @@ contract TribunalBasicTest is Test {
     }
 
     function test_DeriveMandateHash_DifferentSalt() public view {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(2))
         });
@@ -98,16 +115,22 @@ contract TribunalBasicTest is Test {
     }
 
     function test_DeriveClaimHash() public view {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0xDEAD),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0xDEAD),
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -162,11 +185,11 @@ contract TribunalBasicTest is Test {
 
         assertEq(witnessTypeString, string.concat("Mandate(", WITNESS_TYPESTRING, ")"));
         assertEq(details.length, 1);
-        assertEq(details[0].tokenPath, "fills[].fillToken");
-        assertEq(details[0].argPath, "fills[].minimumFillAmount");
+        assertEq(details[0].tokenPath, "fills[].components[].fillToken");
+        assertEq(details[0].argPath, "fills[].components[].minimumFillAmount");
         assertEq(
             details[0].description,
-            "Output token and minimum amount for each fill in the Fills array"
+            "Output token and minimum amount for each fill component in the Fills array"
         );
     }
 }

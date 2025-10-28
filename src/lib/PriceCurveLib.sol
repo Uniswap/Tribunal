@@ -103,7 +103,7 @@ library PriceCurveLib {
             uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
 
             errorBuffer |= (!scalingFactor.sharesScalingDirection(supplementalScalingFactor))
-                .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
+            .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
 
             combinedParameters[i] =
                 PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
@@ -133,7 +133,7 @@ library PriceCurveLib {
             uint256 combinedScalingFactor = scalingFactor + supplementalScalingFactor - 1e18;
 
             errorBuffer |= (!scalingFactor.sharesScalingDirection(supplementalScalingFactor))
-                .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
+            .asUint256() | (combinedScalingFactor > type(uint240).max).asUint256();
 
             combinedParameters[i] =
                 PriceCurveElement.unwrap(create(uint16(duration), uint240(combinedScalingFactor)));
@@ -316,15 +316,14 @@ library PriceCurveLib {
                 // Multiply by iszero(iszero(totalBeforeDivision)) to ensure
                 // amount is set to zero if totalBeforeDivision is zero,
                 // as intermediate overflow can occur if it is zero.
-                amount :=
-                    mul(
-                        iszero(iszero(totalBeforeDivision)),
-                        // Subtract 1 from the numerator and add 1 to the result
-                        // if roundUp is true to get proper rounding direction.
-                        // Division is performed with no zero check as duration
-                        // cannot be zero as long as startBlock < endBlock.
-                        add(div(sub(totalBeforeDivision, roundUp), duration), roundUp)
-                    )
+                amount := mul(
+                    iszero(iszero(totalBeforeDivision)),
+                    // Subtract 1 from the numerator and add 1 to the result
+                    // if roundUp is true to get proper rounding direction.
+                    // Division is performed with no zero check as duration
+                    // cannot be zero as long as startBlock < endBlock.
+                    add(div(sub(totalBeforeDivision, roundUp), duration), roundUp)
+                )
             }
 
             // Return the current amount.
@@ -347,11 +346,10 @@ library PriceCurveLib {
         assembly {
             let threshold := 1000000000000000000
 
-            result :=
-                or(
-                    or(eq(a, threshold), eq(b, threshold)), // either value is 1e18
-                    eq(gt(a, threshold), gt(b, threshold)) // both values are either greater or less than 1e18
-                )
+            result := or(
+                or(eq(a, threshold), eq(b, threshold)), // either value is 1e18
+                eq(gt(a, threshold), gt(b, threshold)) // both values are either greater or less than 1e18
+            )
         }
     }
 }

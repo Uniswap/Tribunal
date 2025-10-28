@@ -7,7 +7,14 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback,
+    FillRecipient
+} from "../src/types/TribunalStructs.sol";
 import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {TheCompact} from "the-compact/src/TheCompact.sol";
@@ -153,16 +160,22 @@ abstract contract MockSetup is Test {
     }
 
     function _getFill() internal view returns (Fill memory) {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(token),
+            minimumFillAmount: minimumFillAmount,
+            recipient: sponsor,
+            applyScaling: true
+        });
+
         return Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800, // 2023-12-21 00:00:00 UTC
-            fillToken: address(token),
-            minimumFillAmount: minimumFillAmount,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: new uint256[](0),
-            recipient: sponsor,
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -254,7 +267,11 @@ contract ERC7683Tribunal_Fill is MockSetup {
         tribunal.fill(
             order.orderId,
             abi.encode(
-                _getClaim(), mandate.fills[0], mandate.adjuster, fillHashes, 1 /* invalid input */
+                _getClaim(),
+                mandate.fills[0],
+                mandate.adjuster,
+                fillHashes,
+                1 /* invalid input */
             ),
             fillerData
         );
@@ -273,16 +290,22 @@ contract ERC7683Tribunal_Fill is MockSetup {
             sponsorSignature: "",
             allocatorSignature: ""
         });
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(token),
+            minimumFillAmount: minimumFillAmount,
+            recipient: sponsor,
+            applyScaling: true
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800, // 2023-12-21 00:00:00 UTC
-            fillToken: address(token),
-            minimumFillAmount: minimumFillAmount,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: new uint256[](0), // minimal length
-            recipient: sponsor,
             recipientCallback: new RecipientCallback[](0), // minimal length
             salt: bytes32(uint256(1))
         });
@@ -407,10 +430,13 @@ contract ERC7683Tribunal_Fill is MockSetup {
 
         bytes memory fillerData = _getFillerData();
 
+        FillRecipient[] memory fillRecipients = new FillRecipient[](1);
+        fillRecipients[0] = FillRecipient({fillAmount: minimumFillAmount, recipient: sponsor});
+
         vm.prank(filler_);
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
-            sourceChainId, sponsor, filler, claimHash, minimumFillAmount, claimAmounts, targetBlock
+            sourceChainId, sponsor, filler, claimHash, fillRecipients, claimAmounts, targetBlock
         );
         tribunal.fill(order.orderId, order.fillInstructions[0].originData, fillerData);
     }

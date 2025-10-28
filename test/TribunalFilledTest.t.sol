@@ -5,7 +5,14 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    Adjustment,
+    RecipientCallback,
+    FillRecipient
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 
@@ -32,16 +39,22 @@ contract TribunalFilledTest is Test {
     }
 
     function test_FilledReturnsTrueForUsedClaim() public {
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+
         Fill memory fill = Fill({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
-            fillToken: address(0), // Use native token
-            minimumFillAmount: 1 ether,
+            components: components,
             baselinePriorityFee: 100 wei,
             scalingFactor: 1e18,
             priceCurve: emptyPriceCurve,
-            recipient: address(0xCAFE),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -92,6 +105,9 @@ contract TribunalFilledTest is Test {
         );
         bytes32 actualClaimHash = tribunal.deriveClaimHash(claim.compact, actualMandateHash);
 
+        FillRecipient[] memory fillRecipients = new FillRecipient[](1);
+        fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xCAFE)});
+
         // Expect CrossChainFill event for cross-chain fills
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
@@ -99,7 +115,7 @@ contract TribunalFilledTest is Test {
             sponsor,
             address(this),
             actualClaimHash,
-            1 ether,
+            fillRecipients,
             claimAmounts,
             adjustment.targetBlock
         );
@@ -134,7 +150,9 @@ contract TribunalFilledTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
-        tribunal.fill{value: 1 ether}(
+        tribunal.fill{
+            value: 1 ether
+        }(
             claim,
             fill,
             adjuster,

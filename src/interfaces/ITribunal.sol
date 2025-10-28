@@ -2,7 +2,14 @@
 pragma solidity ^0.8.28;
 
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
-import {Fill, Adjustment, Mandate, RecipientCallback} from "../types/TribunalStructs.sol";
+import {
+    Fill,
+    FillComponent,
+    Adjustment,
+    Mandate,
+    RecipientCallback,
+    FillRecipient
+} from "../types/TribunalStructs.sol";
 
 /**
  * @title ITribunal
@@ -18,7 +25,7 @@ interface ITribunal {
      * @param sponsor The address that created the compact to be claimed.
      * @param claimant The address that will receive tokens on the claim chain.
      * @param claimHash The hash of the compact being claimed.
-     * @param fillAmount The amount of tokens filled on the destination chain.
+     * @param fillRecipients Array of fill amounts and their corresponding recipients.
      * @param claimAmounts The amounts of tokens to be claimed on the source chain.
      * @param targetBlock The target block number for the fill.
      */
@@ -27,7 +34,7 @@ interface ITribunal {
         address indexed sponsor,
         address indexed claimant,
         bytes32 claimHash,
-        uint256 fillAmount,
+        FillRecipient[] fillRecipients,
         uint256[] claimAmounts,
         uint256 targetBlock
     );
@@ -37,7 +44,7 @@ interface ITribunal {
      * @param sponsor The address that created the compact to be claimed.
      * @param claimant The address that receives the tokens and optionally a callback.
      * @param claimHash The hash of the compact being claimed.
-     * @param fillAmount The amount of tokens filled.
+     * @param fillRecipients Array of fill amounts and their corresponding recipients.
      * @param claimAmounts The amounts of tokens claimed.
      * @param targetBlock The target block number for the fill.
      */
@@ -45,7 +52,7 @@ interface ITribunal {
         address indexed sponsor,
         address indexed claimant,
         bytes32 claimHash,
-        uint256 fillAmount,
+        FillRecipient[] fillRecipients,
         uint256[] claimAmounts,
         uint256 targetBlock
     );
@@ -100,7 +107,7 @@ interface ITribunal {
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
-     * @return fillAmount The amount of tokens to be filled.
+     * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function fill(
@@ -118,7 +125,7 @@ interface ITribunal {
         returns (
             bytes32 claimHash,
             bytes32 mandateHash,
-            uint256 fillAmount,
+            uint256[] memory fillAmounts,
             uint256[] memory claimAmounts
         );
 
@@ -224,6 +231,16 @@ interface ITribunal {
      * @return The derived fill hash.
      */
     function deriveFillHash(Fill calldata targetFill) external view returns (bytes32);
+
+    /**
+     * @notice Derives a fill component hash using EIP-712 typed data.
+     * @param component The fill component containing all hash parameters.
+     * @return The derived fill component hash.
+     */
+    function deriveFillComponentHash(FillComponent calldata component)
+        external
+        pure
+        returns (bytes32);
 
     /**
      * @notice Derives a recipient callback hash using EIP-712 typed data.

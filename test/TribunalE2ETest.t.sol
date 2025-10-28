@@ -8,7 +8,14 @@ import {TheCompact} from "../lib/the-compact/src/TheCompact.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {DeployTheCompact} from "./helpers/DeployTheCompact.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "../lib/the-compact/src/types/EIP712Types.sol";
-import {Mandate, Fill, RecipientCallback, Adjustment} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    Fill,
+    FillComponent,
+    RecipientCallback,
+    Adjustment,
+    FillRecipient
+} from "../src/types/TribunalStructs.sol";
 import {
     MANDATE_TYPEHASH,
     MANDATE_FILL_TYPEHASH,
@@ -197,9 +204,9 @@ contract TribunalE2ETest is DeployTheCompact {
         Tribunal tribunalChain2Temp = new Tribunal{salt: 0}();
         BridgedToken bridgedTokenChain2Temp = new BridgedToken{salt: 0}();
         TestRecipientCallback recipientCallbackTemp = new TestRecipientCallback{salt: 0}();
-        MockBridge bridgeTemp = new MockBridge{salt: 0}(
-            payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp)
-        );
+        MockBridge bridgeTemp = new MockBridge{
+            salt: 0
+        }(payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp));
 
         // Grant bridge role to the bridge and to this test contract (for setup)
         bridgedTokenChain2Temp.grantBridgeRole(address(bridgeTemp));
@@ -313,16 +320,22 @@ contract TribunalE2ETest is DeployTheCompact {
         Fill[] memory fills = new Fill[](2);
 
         // Cross-chain fill (Chain 2)
+        FillComponent[] memory components0 = new FillComponent[](1);
+        components0[0] = FillComponent({
+            fillToken: address(bridgedTokenChain2),
+            minimumFillAmount: FILL_AMOUNT,
+            recipient: recipient,
+            applyScaling: false
+        });
+
         fills[0] = Fill({
             chainId: CHAIN_2,
             tribunal: address(tribunalChain2),
             expires: block.timestamp + 1 hours,
-            fillToken: address(bridgedTokenChain2),
-            minimumFillAmount: FILL_AMOUNT,
+            components: components0,
             baselinePriorityFee: 1 gwei,
             scalingFactor: 1e18, // No scaling
             priceCurve: new uint256[](0),
-            recipient: recipient,
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
         });
@@ -336,16 +349,22 @@ contract TribunalE2ETest is DeployTheCompact {
             context: abi.encode("test context")
         });
 
+        FillComponent[] memory components1 = new FillComponent[](1);
+        components1[0] = FillComponent({
+            fillToken: address(tokenChain1),
+            minimumFillAmount: FILL_AMOUNT,
+            recipient: address(recipientCallback),
+            applyScaling: false
+        });
+
         fills[1] = Fill({
             chainId: CHAIN_1,
             tribunal: address(tribunalChain1),
             expires: block.timestamp + 2 hours,
-            fillToken: address(tokenChain1),
-            minimumFillAmount: FILL_AMOUNT,
+            components: components1,
             baselinePriorityFee: 1 gwei,
             scalingFactor: 1e18,
             priceCurve: new uint256[](0),
-            recipient: address(recipientCallback),
             recipientCallback: callbacks,
             salt: bytes32(uint256(2))
         });
@@ -414,19 +433,11 @@ contract TribunalE2ETest is DeployTheCompact {
 
         // Create batch claim for Chain 2
         ITribunal.BatchClaim memory batchClaim = ITribunal.BatchClaim({
-            chainId: CHAIN_1,
-            compact: compact,
-            sponsorSignature: "",
-            allocatorSignature: ""
+            chainId: CHAIN_1, compact: compact, sponsorSignature: "", allocatorSignature: ""
         });
 
         // Execute the cross-chain fill
-        (
-            bytes32 returnedClaimHash, // bytes32 returnedMandateHash
-            // uint256[] memory claimAmounts
-            ,
-            uint256 fillAmount,
-        ) = tribunalChain2.fill(
+        (bytes32 returnedClaimHash,, uint256[] memory fillAmounts,) = tribunalChain2.fill(
             batchClaim,
             fills[0],
             adjuster,
@@ -441,7 +452,7 @@ contract TribunalE2ETest is DeployTheCompact {
 
         // Verify the fill was recorded
         assertEq(tribunalChain2.filled(returnedClaimHash), filler);
-        assertEq(fillAmount, FILL_AMOUNT);
+        assertEq(fillAmounts[0], FILL_AMOUNT);
     }
 
     function testBridgeAndSettle() public {
