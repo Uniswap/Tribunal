@@ -73,7 +73,6 @@ interface ITribunal {
     error ReentrancyGuard();
     error InvalidRecipientCallbackLength();
     error ValidityConditionsNotMet();
-    error QuoteInapplicableToSameChainFills();
     error InvalidFillBlock();
     error InvalidAdjustment();
     error InvalidFillHashArguments();
@@ -172,27 +171,6 @@ interface ITribunal {
     function cancelChainExclusive(BatchCompact calldata compact, bytes32 mandateHash)
         external
         returns (bytes32 claimHash);
-
-    /**
-     * @notice Get a quote for any native tokens supplied to pay for dispensation (i.e. cost to trigger settlement).
-     * @param claim The claim parameters and constraints.
-     * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param fillHashes An array of the hashes of each fill.
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
-     * @return dispensation The amount quoted to perform the dispensation.
-     */
-    function quote(
-        BatchClaim calldata claim,
-        Fill calldata mandate,
-        address adjuster,
-        Adjustment calldata adjustment,
-        bytes32[] calldata fillHashes,
-        bytes32 claimant,
-        uint256 fillBlock
-    ) external view returns (uint256 dispensation);
 
     /**
      * @notice Get details about the expected compact witness.

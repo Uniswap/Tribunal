@@ -88,6 +88,9 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @notice Mapping of used claim hashes to claimants.
     mapping(bytes32 => bytes32) private _dispositions;
 
+    /// @notice Mapping of claim hashes to claim reduction scaling factors (only set when < 1e18).
+    mapping(bytes32 => uint256) private _claimReductionScalingFactors;
+
     // ======== Modifiers ========
     modifier nonReentrant() {
         assembly ("memory-safe") {
@@ -310,8 +313,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             claim.compact,
             claim.sponsorSignature,
             claim.allocatorSignature,
-            mandateHash,
-            true
+            mandateHash
         );
     }
 
@@ -326,40 +328,32 @@ contract Tribunal is BlockNumberish, ITribunal {
             compact,
             LibBytes.emptyCalldata(), // sponsorSignature
             LibBytes.emptyCalldata(), // allocatorSignature
-            mandateHash,
-            false
+            mandateHash
         );
     }
 
     // ======== External View Functions ========
 
     /// @inheritdoc ITribunal
-    function quote(
-        BatchClaim calldata claim,
-        Fill calldata mandate,
-        address adjuster,
-        Adjustment calldata adjustment,
-        bytes32[] calldata fillHashes,
-        bytes32 claimant,
-        uint256 fillBlock
-    ) external view returns (uint256 dispensation) {
-        return _quote(
-            claim.chainId,
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandate,
-            adjuster,
-            adjustment,
-            fillBlock,
-            claimant,
-            fillHashes
-        );
-    }
-
-    /// @inheritdoc ITribunal
     function filled(bytes32 claimHash) external view returns (bytes32) {
         return _dispositions[claimHash];
+    }
+
+    /// @notice Returns the claim reduction scaling factor for a given claim hash.
+    /// @param claimHash The claim hash to query.
+    /// @return scalingFactor The scaling factor (returns 1e18 if not set, indicating no reduction).
+    function claimReductionScalingFactor(bytes32 claimHash)
+        external
+        view
+        returns (uint256 scalingFactor)
+    {
+        uint256 storedScalingFactor = _claimReductionScalingFactors[claimHash];
+        assembly ("memory-safe") {
+            scalingFactor := or(
+                storedScalingFactor,
+                mul(iszero(storedScalingFactor), BASE_SCALING_FACTOR)
+            )
+        }
     }
 
     // ======== External Pure Functions ========
@@ -541,7 +535,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 fillBlock,
         uint256 baselinePriorityFee,
         uint256 scalingFactor
-    ) public view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
+    ) external view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
         fillAmounts = new uint256[](components.length);
 
         // Calculate the common scaling values
@@ -719,7 +713,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Derive fill and claim amounts.
-        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
+        uint256 scalingMultiplier;
+        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
             compact.commitments,
             mandate.components,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
@@ -744,6 +739,11 @@ contract Tribunal is BlockNumberish, ITribunal {
             claimAmounts,
             adjustment
         );
+
+        // Store the claim reduction scaling factor if claims were reduced
+        if (scalingMultiplier < BASE_SCALING_FACTOR) {
+            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+        }
 
         if (!adjuster.isValidSignatureNow(
                 _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
@@ -815,18 +815,6 @@ contract Tribunal is BlockNumberish, ITribunal {
 
             // Set the disposition for the given claim hash.
             _dispositions[claimHash] = claimant;
-
-            // Process the directive.
-            _processDirective(
-                chainId,
-                compact,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                claimant,
-                claimAmounts,
-                adjustment.targetBlock
-            );
 
             // Emit the fill event.
             emit CrossChainFill(
@@ -945,8 +933,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         BatchCompact calldata compact,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bool directive
+        bytes32 mandateHash
     ) internal returns (bytes32 claimHash) {
         // Ensure the claim can only be canceled by the sponsor.
         if (msg.sender != compact.sponsor) {
@@ -963,20 +950,6 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Emit the cancel event.
         emit Cancel(compact.sponsor, claimHash);
 
-        if (directive) {
-            // Process the directive.
-            _processDirective(
-                chainId,
-                compact,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                bytes32(uint256(uint160(compact.sponsor))), // claimant
-                new uint256[](0), // claimAmounts
-                0 // targetBlock
-            );
-        }
-
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
         if (remaining > 0) {
@@ -985,6 +958,109 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     // ======== Internal View Functions ========
+
+    /**
+     * @notice Internal function that derives amounts from components and returns the scaling multiplier.
+     * @param maximumClaimAmounts The maximum amounts to claim.
+     * @param components The fill components.
+     * @param priceCurve The price curve to apply.
+     * @param targetBlock The target block number.
+     * @param fillBlock The fill block number.
+     * @param baselinePriorityFee The baseline priority fee.
+     * @param scalingFactor The scaling factor.
+     * @return fillAmounts The derived fill amounts for each component.
+     * @return claimAmounts The derived claim amounts.
+     * @return scalingMultiplier The calculated scaling multiplier.
+     */
+    function _deriveAmountsFromComponentsWithScaling(
+        Lock[] calldata maximumClaimAmounts,
+        FillComponent[] calldata components,
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock,
+        uint256 baselinePriorityFee,
+        uint256 scalingFactor
+    )
+        internal
+        view
+        returns (
+            uint256[] memory fillAmounts,
+            uint256[] memory claimAmounts,
+            uint256 scalingMultiplier
+        )
+    {
+        fillAmounts = new uint256[](components.length);
+
+        // Calculate the common scaling values
+        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
+        if (targetBlock != 0) {
+            if (targetBlock > fillBlock) {
+                revert InvalidTargetBlock(fillBlock, targetBlock);
+            }
+            uint256 blocksPassed;
+            unchecked {
+                blocksPassed = fillBlock - targetBlock;
+            }
+            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
+        } else {
+            if (priceCurve.length != 0) {
+                revert InvalidTargetBlockDesignation();
+            }
+        }
+
+        if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
+            revert PriceCurveLib.InvalidPriceCurveParameters();
+        }
+
+        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+
+        // Calculate the scaling multiplier
+        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
+        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
+
+        if (useExactIn) {
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
+        } else {
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
+
+            // Sanity check: revert if derived scaling factor is zero
+            if (scalingMultiplier == 0) {
+                revert PriceCurveLib.InvalidPriceCurveParameters();
+            }
+        }
+
+        // Calculate fill amounts for each component
+        for (uint256 i = 0; i < components.length; i++) {
+            if (components[i].applyScaling) {
+                if (useExactIn) {
+                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
+                } else {
+                    fillAmounts[i] = components[i].minimumFillAmount;
+                }
+            } else {
+                // If not applying scaling, use the minimum amount as-is
+                fillAmounts[i] = components[i].minimumFillAmount;
+            }
+        }
+
+        // Calculate claim amounts
+        claimAmounts = new uint256[](maximumClaimAmounts.length);
+        if (useExactIn) {
+            // For exact-in, use maximum claim amounts unchanged
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
+        } else {
+            // For exact-out, apply scaling to claim amounts
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
+            }
+        }
+
+        return (fillAmounts, claimAmounts, scalingMultiplier);
+    }
 
     /**
      * @notice Derives the mandate hash from an adjuster, a target fill, an array of fill hashes,
@@ -1009,72 +1085,6 @@ contract Tribunal is BlockNumberish, ITribunal {
             keccak256(
                 abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
             );
-    }
-
-    /**
-     * @notice Internal implementation of the quote function.
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandate The fill conditions and amount derivation parameters.
-     * @param fillBlock The block where the fill will be performed.
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @return dispensation The suggested dispensation amount.
-     */
-    function _quote(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        Fill calldata mandate,
-        address adjuster,
-        Adjustment calldata adjustment,
-        uint256 fillBlock,
-        bytes32 claimant,
-        bytes32[] calldata fillHashes
-    ) internal view returns (uint256 dispensation) {
-        if (chainId == block.chainid) {
-            revert QuoteInapplicableToSameChainFills();
-        }
-
-        // Ensure that the mandate has not expired.
-        mandate.expires.later();
-
-        // Derive mandate hash.
-        bytes32 mandateHash =
-            _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
-
-        // Derive and check claim hash
-        bytes32 claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != bytes32(0)) {
-            revert AlreadyClaimed();
-        }
-
-        // Derive fill and claim amounts.
-        uint256[] memory fillAmounts;
-        uint256[] memory claimAmounts;
-        (fillAmounts, claimAmounts) = deriveAmountsFromComponents(
-            compact.commitments,
-            mandate.components,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
-        );
-
-        // Process the quote.
-        dispensation = _quoteDirective(
-            chainId,
-            compact,
-            sponsorSignature,
-            allocatorSignature,
-            mandateHash,
-            claimant,
-            claimAmounts,
-            fillBlock
-        );
     }
 
     function _checkCompactAllowance(address token, address owner)
@@ -1126,65 +1136,6 @@ contract Tribunal is BlockNumberish, ITribunal {
                 priorityFee = 0;
             }
         }
-    }
-
-    /**
-     * @notice Derive the quote for any native tokens supplied to pay for dispensation (i.e. cost to trigger settlement).
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandateHash The derived mandate hash.
-     * @param claimant The address of the claimant.
-     * @param claimAmounts The amounts to claim.
-     * @return dispensation The quoted dispensation amount.
-     * @param targetBlock The targeted fill block, or 0 for no target block.
-     */
-    function _quoteDirective(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        uint256 targetBlock
-    ) internal view virtual returns (uint256 dispensation) {
-        chainId;
-        compact;
-        sponsorSignature;
-        allocatorSignature;
-        mandateHash;
-        claimant;
-        claimAmounts;
-        targetBlock;
-
-        // NOTE: Override & implement quote logic.
-        return msg.sender.balance / 1000;
-    }
-
-    /**
-     * @notice Process the mandated directive (i.e. trigger settlement).
-     * @param chainId The claim chain where the resource lock is held.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
-     * @param mandateHash The derived mandate hash.
-     * @param claimant The recipient of claimed tokens on claim chain.
-     * @param claimAmounts The amounts to claim.
-     * @param targetBlock The targeted fill block, or 0 for no target block.
-     */
-    function _processDirective(
-        uint256 chainId,
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        uint256 targetBlock
-    ) internal virtual {
-        // NOTE: Override & implement directive processing.
     }
 
     // ======== Internal Pure Functions ========

@@ -66,19 +66,8 @@ contract ReentrantReceiver {
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = _TRIBUNAL.deriveFillHash(_mandate.fills[0]);
 
-        uint256 quote = _TRIBUNAL.quote(
-            _claim,
-            _mandate.fills[0],
-            address(this),
-            adjustment,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            block.number
-        );
         uint256 balanceBefore = address(this).balance;
-        try _TRIBUNAL.fill{
-            value: quote
-        }(
+        try _TRIBUNAL.fill(
             _claim,
             _mandate.fills[0],
             address(this),

@@ -64,43 +64,6 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     }
 
     /**
-     * @notice Get a quote for any native tokens supplied to pay for dispensation (i.e. cost to trigger settlement).
-     * @dev Unused initial parameter included for EIP7683 interface compatibility.
-     * @param originData The encoded Claim and Mandate data.
-     * @param fillerData The encoded claimant address.
-     * @return dispensation The suggested dispensation amount.
-     */
-    function quote(bytes32, bytes calldata originData, bytes calldata fillerData)
-        external
-        view
-        returns (uint256 dispensation)
-    {
-        (
-            BatchClaim calldata claim,
-            Fill calldata mandate,
-            bytes32[] calldata fillHashes,
-            address adjuster,
-            Adjustment calldata adjustment,
-            ,
-            bytes32 claimant,
-            uint256 fillBlock
-        ) = _parseCalldata(originData, fillerData);
-
-        return _quote(
-            claim.chainId,
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandate,
-            adjuster,
-            adjustment,
-            fillBlock,
-            claimant,
-            fillHashes
-        );
-    }
-
-    /**
      * @notice Encode the filler data for the fill function.
      * @param adjustment The adjustment struct, including the adjustments to the order.
      * @param adjustmentAuthorization The adjustment authorization bytes confirming the adjustment.
