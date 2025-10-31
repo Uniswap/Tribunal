@@ -86,7 +86,7 @@ contract TribunalCancelTest is Test {
         vm.prank(sponsor);
         vm.expectEmit(true, false, false, false, address(tribunal));
         emit ITribunal.Cancel(sponsor, claimHash);
-        tribunal.cancel(claim, mandateHash);
+        tribunal.cancel(claim.compact, mandateHash);
 
         Adjustment memory adjustment = Adjustment({
             fillIndex: 0,
@@ -198,7 +198,7 @@ contract TribunalCancelTest is Test {
 
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSignature("NotSponsor()"));
-        tribunal.cancel(claim, mandateHash);
+        tribunal.cancel(claim.compact, mandateHash);
     }
 
     function test_cancelRevertsOnFilledClaim() public {
@@ -323,7 +323,7 @@ contract TribunalCancelTest is Test {
 
         vm.prank(sponsor);
         vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.cancel(claim, mandateHash);
+        tribunal.cancel(claim.compact, mandateHash);
     }
 
     function test_cancelRevertsOnExpiredMandate(uint8 expires) public {
@@ -371,7 +371,7 @@ contract TribunalCancelTest is Test {
         vm.warp(fill.expires + 1);
 
         vm.prank(sponsor);
-        tribunal.cancel(claim, mandateHash); // Note: No revert expected for expiration in cancel
+        tribunal.cancel(claim.compact, mandateHash); // Note: No revert expected for expiration in cancel
     }
 
     function test_cancelSuccessfullyChainExclusive() public {
@@ -416,7 +416,7 @@ contract TribunalCancelTest is Test {
         vm.prank(sponsor);
         vm.expectEmit(true, false, false, false, address(tribunal));
         emit ITribunal.Cancel(sponsor, claimHash);
-        tribunal.cancelChainExclusive(compact, mandateHash);
+        tribunal.cancel(compact, mandateHash);
 
         // Make it cross-chain to test the AlreadyClaimed check
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
