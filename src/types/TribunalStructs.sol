@@ -82,6 +82,7 @@ struct FillRecipient {
 
 // Struct for dispatch callback parameters
 struct DispatchParameters {
+    uint256 chainId; // Chain ID the dispatch callback is intended to interact with.
     address target; // Address that will receive the dispatch callback.
     uint256 value; // Amount of native tokens to send with the callback.
     bytes context; // Arbitrary context data to pass to the callback.

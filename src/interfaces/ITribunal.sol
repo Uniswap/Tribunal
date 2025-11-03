@@ -67,12 +67,16 @@ interface ITribunal {
 
     /**
      * @notice Emitted when a dispatch callback is executed.
-     * @param claimHash The hash of the claim that was filled.
      * @param dispatchTarget The address that received the dispatch callback.
+     * @param chainId The chain ID the dispatch callback is intended to interact with.
      * @param claimant The bytes32 value representing the claimant.
+     * @param claimHash The hash of the compact to be claimed on performing the fill.
      */
     event Dispatch(
-        bytes32 indexed claimHash, address indexed dispatchTarget, bytes32 indexed claimant
+        address indexed dispatchTarget,
+        uint256 indexed chainId,
+        bytes32 indexed claimant,
+        bytes32 claimHash
     );
 
     // ======== Custom Errors ========

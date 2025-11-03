@@ -1265,6 +1265,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 .dispatchCallback{
                     value: dispatchParams.value
                 }(
+                    dispatchParams.chainId,
                     compact,
                     mandateHash,
                     claimHash,
@@ -1277,7 +1278,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             revert InvalidDispatchCallback();
         }
 
-        emit Dispatch(claimHash, dispatchParams.target, claimant);
+        emit Dispatch(dispatchParams.target, dispatchParams.chainId, claimant, claimHash);
 
         // Return any unused native tokens to the caller
         uint256 remaining = address(this).balance;
