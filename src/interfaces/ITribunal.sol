@@ -22,7 +22,6 @@ interface ITribunal {
     // ======== Events ========
     /**
      * @notice Emitted when a cross-chain fill is successfully executed.
-     * @param chainId The chain ID where the claim will be processed.
      * @param sponsor The address that created the compact to be claimed.
      * @param claimant The bytes32 value representing the claimant (lock tag ++ address).
      * @param claimHash The hash of the compact being claimed.
@@ -31,7 +30,6 @@ interface ITribunal {
      * @param targetBlock The target block number for the fill.
      */
     event CrossChainFill(
-        uint256 indexed chainId,
         address indexed sponsor,
         bytes32 indexed claimant,
         bytes32 claimHash,
@@ -81,7 +79,7 @@ interface ITribunal {
 
     // ======== Custom Errors ========
     error InvalidGasPrice();
-    error AlreadyClaimed();
+    error AlreadyFilled();
     error InvalidTargetBlockDesignation();
     error InvalidTargetBlock(uint256 blockNumber, uint256 targetBlockNumber);
     error NotSponsor();
@@ -99,7 +97,6 @@ interface ITribunal {
 
     // ======== Type Declarations ========
     struct BatchClaim {
-        uint256 chainId; // Claim processing chain ID
         BatchCompact compact;
         bytes sponsorSignature; // Authorization from the sponsor
         bytes allocatorSignature; // Authorization from the allocator
@@ -112,8 +109,8 @@ interface ITribunal {
     }
 
     /**
-     * @notice Attempt to perform a fill.
-     * @param claim The claim parameters and constraints.
+     * @notice Attempt to perform a cross-chain fill.
+     * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
      * @param adjustment The adjustment provided by the adjuster for the fill.
@@ -127,7 +124,7 @@ interface ITribunal {
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function fill(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
@@ -146,8 +143,8 @@ interface ITribunal {
         );
 
     /**
-     * @notice Attempt to perform a fill and execute a dispatch callback.
-     * @param claim The claim parameters and constraints.
+     * @notice Attempt to perform a cross-chain fill and execute a dispatch callback.
+     * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
      * @param adjustment The adjustment provided by the adjuster for the fill.
@@ -162,7 +159,7 @@ interface ITribunal {
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function fillAndDispatch(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
@@ -171,6 +168,41 @@ interface ITribunal {
         bytes32 claimant,
         uint256 fillBlock,
         DispatchParameters calldata dispatch
+    )
+        external
+        payable
+        returns (
+            bytes32 claimHash,
+            bytes32 mandateHash,
+            uint256[] memory fillAmounts,
+            uint256[] memory claimAmounts
+        );
+
+    /**
+     * @notice Attempt to perform a same-chain fill and claim tokens in a single action.
+     * @dev This function simultaneously claims tokens and performs a fill when both are on a single chain.
+     * @param claim The batch claim containing compact parameters, sponsor signature, and allocator signature.
+     * @param mandate The fill conditions and amount derivation parameters.
+     * @param adjuster The assigned adjuster for the fill.
+     * @param adjustment The adjustment provided by the adjuster for the fill.
+     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param fillHashes An array of the hashes of each fill.
+     * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param fillBlock The block number to target for the fill (0 allows any block).
+     * @return claimHash The derived claim hash.
+     * @return mandateHash The derived mandate hash.
+     * @return fillAmounts The amounts of tokens to be filled for each component.
+     * @return claimAmounts The amount of tokens to be claimed.
+     */
+    function fillAndClaim(
+        BatchClaim calldata claim,
+        Fill calldata mandate,
+        address adjuster,
+        Adjustment calldata adjustment,
+        bytes calldata adjustmentAuthorization,
+        bytes32[] calldata fillHashes,
+        bytes32 claimant,
+        uint256 fillBlock
     )
         external
         payable
@@ -230,13 +262,13 @@ interface ITribunal {
     /**
      * @notice Cancel a claim and trigger a dispatch callback with all claim amounts reduced to zero.
      * @dev Must be called by the sponsor directly. Processes the directive on the source chain and triggers dispatch.
-     * @param claim The claim parameters and constraints.
+     * @param compact The compact parameters and constraints.
      * @param mandateHash The mandate hash of the claim to cancel.
      * @param dispatch The dispatch callback parameters.
      * @return claimHash The hash of the cancelled claim.
      */
     function cancelAndDispatch(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         bytes32 mandateHash,
         DispatchParameters calldata dispatch
     ) external payable returns (bytes32 claimHash);

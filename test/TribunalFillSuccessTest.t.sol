@@ -206,7 +206,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -266,7 +265,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -336,7 +335,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -401,7 +399,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,

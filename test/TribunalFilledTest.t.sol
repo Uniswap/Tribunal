@@ -64,7 +64,6 @@ contract TribunalFilledTest is Test {
 
         // Make it a cross-chain fill to avoid needing to mock TheCompact
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -111,7 +110,6 @@ contract TribunalFilledTest is Test {
         // Expect CrossChainFill event for cross-chain fills
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
-            claim.chainId,
             sponsor,
             bytes32(uint256(uint160(address(this)))),
             actualClaimHash,
@@ -153,7 +151,7 @@ contract TribunalFilledTest is Test {
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,

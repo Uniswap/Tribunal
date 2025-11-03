@@ -136,10 +136,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161, // Different chain for cross-chain fill
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -160,7 +157,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,
@@ -230,10 +227,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161, // Different chain
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -254,7 +248,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,
@@ -316,10 +310,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161,
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -346,7 +337,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         vm.expectRevert();
         vm.prank(filler);
         tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,

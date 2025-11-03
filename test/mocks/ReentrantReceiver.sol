@@ -22,7 +22,6 @@ contract ReentrantReceiver {
     constructor(Tribunal _tribunal) payable {
         _TRIBUNAL = _tribunal;
         _claim = ITribunal.BatchClaim({
-            chainId: 1,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: address(this),
@@ -68,7 +67,7 @@ contract ReentrantReceiver {
 
         uint256 balanceBefore = address(this).balance;
         try _TRIBUNAL.fill(
-            _claim,
+            _claim.compact,
             _mandate.fills[0],
             address(this),
             adjustment,
@@ -88,7 +87,7 @@ contract ReentrantReceiver {
         return _mandate.fills[0];
     }
 
-    function getClaim() public view returns (Tribunal.BatchClaim memory) {
+    function getClaim() public view returns (ITribunal.BatchClaim memory) {
         return _claim;
     }
 }

@@ -195,7 +195,6 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -259,7 +258,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,

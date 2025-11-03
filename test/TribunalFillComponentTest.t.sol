@@ -257,7 +257,6 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -306,7 +305,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -391,7 +390,6 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -430,7 +428,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         (,, uint256[] memory fillAmounts,) = tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -532,7 +530,6 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -564,7 +561,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -655,7 +652,6 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -694,7 +690,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -825,7 +821,6 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -858,7 +853,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,

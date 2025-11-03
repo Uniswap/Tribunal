@@ -242,10 +242,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         // Use a different chainId for cross-chain fill (e.g., Ethereum mainnet)
         claim = ITribunal.BatchClaim({
-            chainId: 1,
-            compact: compact,
-            sponsorSignature: sponsorSig,
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: sponsorSig, allocatorSignature: new bytes(0)
         });
 
         adjustment = Adjustment({
@@ -307,7 +304,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         tribunal.fillAndDispatch{
             value: 0.5 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -357,7 +354,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         // First, perform the fill
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -454,7 +451,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         );
 
         vm.prank(sponsor);
-        tribunal.cancelAndDispatch{value: 0.1 ether}(claim, mandateHash, dispatchParams);
+        tribunal.cancelAndDispatch{value: 0.1 ether}(claim.compact, mandateHash, dispatchParams);
 
         assertTrue(dispatchTarget.callbackCalled());
         assertEq(dispatchTarget.receivedChainId(), targetChainId);
@@ -529,7 +526,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         vm.expectRevert("MockDispatchTarget: forced revert");
         tribunal.fillAndDispatch(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -566,7 +563,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
         tribunal.fillAndDispatch(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -596,7 +593,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         // Perform fill first
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -637,7 +634,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         // Perform fill first
         vm.prank(address(filler));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -672,6 +669,6 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(sponsor);
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
-        tribunal.cancelAndDispatch(claim, mandateHash, dispatchParams);
+        tribunal.cancelAndDispatch(claim.compact, mandateHash, dispatchParams);
     }
 }

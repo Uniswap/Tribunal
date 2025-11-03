@@ -69,7 +69,6 @@ contract TribunalCancelTest is Test {
 
         // Make it cross-chain to test the AlreadyClaimed check
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid + 1, // Different chain
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -135,11 +134,11 @@ contract TribunalCancelTest is Test {
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
         uint256 initialSenderBalance = address(this).balance;
-        vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
+        vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 2 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -183,22 +182,17 @@ contract TribunalCancelTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
-            compact: BatchCompact({
-                arbiter: address(this),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+        BatchCompact memory compact = BatchCompact({
+            arbiter: address(this),
+            sponsor: sponsor,
+            nonce: 0,
+            expires: block.timestamp + 1 hours,
+            commitments: commitments
         });
 
         vm.prank(attacker);
         vm.expectRevert(abi.encodeWithSignature("NotSponsor()"));
-        tribunal.cancel(claim.compact, mandateHash);
+        tribunal.cancel(compact, mandateHash);
     }
 
     function test_cancelRevertsOnFilledClaim() public {
@@ -226,17 +220,12 @@ contract TribunalCancelTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         // Make it cross-chain to avoid TheCompact mocking
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid + 1, // Different chain
-            compact: BatchCompact({
-                arbiter: address(this),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+        BatchCompact memory compact = BatchCompact({
+            arbiter: address(this),
+            sponsor: sponsor,
+            nonce: 0,
+            expires: block.timestamp + 1 hours,
+            commitments: commitments
         });
 
         Adjustment memory adjustment = Adjustment({
@@ -254,7 +243,7 @@ contract TribunalCancelTest is Test {
             abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
         );
 
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+        bytes32 claimHash = tribunal.deriveClaimHash(compact, mandateHash);
 
         // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
@@ -296,7 +285,6 @@ contract TribunalCancelTest is Test {
 
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
-            claim.chainId,
             sponsor,
             bytes32(uint256(uint160(address(this)))),
             claimHash,
@@ -308,7 +296,7 @@ contract TribunalCancelTest is Test {
         tribunal.fill{
             value: 2 ether
         }(
-            claim,
+            compact,
             fill,
             adjuster,
             adjustment,
@@ -322,8 +310,8 @@ contract TribunalCancelTest is Test {
         assertEq(address(this).balance, initialSenderBalance - fill.components[0].minimumFillAmount);
 
         vm.prank(sponsor);
-        vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
-        tribunal.cancel(claim.compact, mandateHash);
+        vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
+        tribunal.cancel(compact, mandateHash);
     }
 
     function test_cancelRevertsOnExpiredMandate(uint8 expires) public {
@@ -355,23 +343,18 @@ contract TribunalCancelTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
-            compact: BatchCompact({
-                arbiter: address(this),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+        BatchCompact memory compact = BatchCompact({
+            arbiter: address(this),
+            sponsor: sponsor,
+            nonce: 0,
+            expires: block.timestamp + 1 hours,
+            commitments: commitments
         });
 
         vm.warp(fill.expires + 1);
 
         vm.prank(sponsor);
-        tribunal.cancel(claim.compact, mandateHash); // Note: No revert expected for expiration in cancel
+        tribunal.cancel(compact, mandateHash); // Note: No revert expected for expiration in cancel
     }
 
     function test_cancelSuccessfullyChainExclusive() public {
@@ -418,14 +401,6 @@ contract TribunalCancelTest is Test {
         emit ITribunal.Cancel(sponsor, claimHash);
         tribunal.cancel(compact, mandateHash);
 
-        // Make it cross-chain to test the AlreadyClaimed check
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid + 1, // Different chain
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
-        });
-
         Adjustment memory adjustment = Adjustment({
             fillIndex: 0,
             targetBlock: vm.getBlockNumber(),
@@ -442,7 +417,7 @@ contract TribunalCancelTest is Test {
         );
 
         // Sign the adjustment
-        bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(claim.compact, fillMandateHash);
+        bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(compact, fillMandateHash);
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
@@ -473,11 +448,11 @@ contract TribunalCancelTest is Test {
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
         uint256 initialSenderBalance = address(this).balance;
-        vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
+        vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 2 ether
         }(
-            claim,
+            compact,
             fill,
             adjuster,
             adjustment,

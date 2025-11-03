@@ -41,6 +41,11 @@ import {
     WITNESS_TYPESTRING
 } from "./types/TribunalTypeHashes.sol";
 
+enum FillType {
+    CrossChain,
+    SameChain
+}
+
 /**
  * @title Tribunal
  * @author 0age
@@ -125,7 +130,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /// @inheritdoc ITribunal
     function fill(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
@@ -155,10 +160,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            claim.chainId,
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
+            FillType.CrossChain,
+            compact,
+            msg.data[0:0], // empty calldata
+            msg.data[0:0], // empty calldata
             mandate,
             adjuster,
             adjustment,
@@ -179,7 +184,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /// @inheritdoc ITribunal
     function fillAndDispatch(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         Fill calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
@@ -210,10 +215,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            claim.chainId,
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
+            FillType.CrossChain,
+            compact,
+            msg.data[0:0], // empty calldata
+            msg.data[0:0], // empty calldata
             mandate,
             adjuster,
             adjustment,
@@ -224,7 +229,55 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
 
         _performDispatchCallback(
-            claim.compact, mandateHash, claimHash, claimant, claimAmounts, dispatchParameters
+            compact, mandateHash, claimHash, claimant, claimAmounts, dispatchParameters
+        );
+
+        return (claimHash, mandateHash, fillAmounts, claimAmounts);
+    }
+
+    /// @inheritdoc ITribunal
+    function fillAndClaim(
+        BatchClaim calldata claim,
+        Fill calldata mandate,
+        address adjuster,
+        Adjustment calldata adjustment,
+        bytes calldata adjustmentAuthorization,
+        bytes32[] calldata fillHashes,
+        bytes32 claimant,
+        uint256 fillBlock
+    )
+        external
+        payable
+        nonReentrant
+        returns (
+            bytes32 claimHash,
+            bytes32 mandateHash,
+            uint256[] memory fillAmounts,
+            uint256[] memory claimAmounts
+        )
+    {
+        uint256 currentBlock = _getBlockNumberish();
+
+        assembly ("memory-safe") {
+            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
+        }
+
+        if (fillBlock != currentBlock) {
+            revert InvalidFillBlock();
+        }
+
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
+            FillType.SameChain,
+            claim.compact,
+            claim.sponsorSignature,
+            claim.allocatorSignature,
+            mandate,
+            adjuster,
+            adjustment,
+            adjustmentAuthorization,
+            claimant,
+            fillBlock,
+            fillHashes
         );
 
         return (claimHash, mandateHash, fillAmounts, claimAmounts);
@@ -406,18 +459,18 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /// @inheritdoc ITribunal
     function cancelAndDispatch(
-        BatchClaim calldata claim,
+        BatchCompact calldata compact,
         bytes32 mandateHash,
         DispatchParameters calldata dispatchParams
     ) external payable nonReentrant returns (bytes32 claimHash) {
-        claimHash = _cancel(claim.compact, mandateHash);
+        claimHash = _cancel(compact, mandateHash);
 
         // Create zero claim amounts for dispatch
-        uint256[] memory zeroClaimAmounts = new uint256[](claim.compact.commitments.length);
+        uint256[] memory zeroClaimAmounts = new uint256[](compact.commitments.length);
 
         // Trigger dispatch callback with zero amounts
         _performDispatchCallback(
-            claim.compact,
+            compact,
             mandateHash,
             claimHash,
             bytes32(uint256(uint160(msg.sender))),
@@ -743,7 +796,6 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /**
      * @notice Internal implementation of the fill function.
-     * @param chainId The claim chain where the resource lock is held.
      * @param compact The compact parameters.
      * @param sponsorSignature The signature of the sponsor.
      * @param allocatorSignature The signature of the allocator.
@@ -760,7 +812,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function _fill(
-        uint256 chainId,
+        FillType fillType,
         BatchCompact calldata compact,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
@@ -818,7 +870,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         mandateHash = _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
 
         claimHash = _processClaimOrDisposition(
-            chainId,
+            fillType,
             compact,
             mandate,
             sponsorSignature,
@@ -850,7 +902,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     function _processClaimOrDisposition(
-        uint256 chainId,
+        FillType fillType,
         BatchCompact calldata compact,
         Fill calldata mandate,
         bytes calldata sponsorSignature,
@@ -861,7 +913,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256[] memory claimAmounts,
         Adjustment calldata adjustment
     ) internal returns (bytes32 claimHash) {
-        // Build FillRecipient array from components
+        // Build FillRecipient array from components.
         FillRecipient[] memory fillRecipients = new FillRecipient[](mandate.components.length);
         for (uint256 i = 0; i < mandate.components.length; i++) {
             fillRecipients[i] = FillRecipient({
@@ -869,7 +921,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             });
         }
 
-        if (block.chainid == chainId && block.chainid == mandate.chainId) {
+        if (fillType == FillType.SameChain) {
             claimHash = _singleChainFill(
                 compact,
                 mandate,
@@ -894,7 +946,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             // Derive and check claim hash.
             claimHash = deriveClaimHash(compact, mandateHash);
             if (_dispositions[claimHash] != bytes32(0)) {
-                revert AlreadyClaimed();
+                revert AlreadyFilled();
             }
 
             // Set the disposition for the given claim hash.
@@ -902,7 +954,6 @@ contract Tribunal is BlockNumberish, ITribunal {
 
             // Emit the fill event.
             emit CrossChainFill(
-                chainId,
                 compact.sponsor,
                 claimant,
                 claimHash,
@@ -1005,7 +1056,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Derive and check claim hash.
         claimHash = deriveClaimHash(compact, mandateHash);
         if (_dispositions[claimHash] != bytes32(0)) {
-            revert AlreadyClaimed();
+            revert AlreadyFilled();
         }
 
         // Mark as cancelled by sponsor

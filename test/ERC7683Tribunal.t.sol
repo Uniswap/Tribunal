@@ -134,10 +134,7 @@ abstract contract MockSetup is Test {
 
     function _getClaim() internal view returns (ITribunal.BatchClaim memory) {
         return ITribunal.BatchClaim({
-            chainId: sourceChainId,
-            compact: _getBatchCompact(),
-            sponsorSignature: hex"abcd",
-            allocatorSignature: hex"1234"
+            compact: _getBatchCompact(), sponsorSignature: hex"abcd", allocatorSignature: hex"1234"
         });
     }
 
@@ -279,7 +276,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
 
     function test_revert_InvalidOriginData_InvlaidLength() public {
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: sourceChainId,
             compact: BatchCompact({
                 arbiter: arbiter,
                 sponsor: sponsor,
@@ -436,7 +432,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
         vm.prank(filler_);
         vm.expectEmit(true, true, true, true, address(tribunal));
         emit ITribunal.CrossChainFill(
-            sourceChainId,
             sponsor,
             bytes32(uint256(uint160(filler))),
             claimHash,

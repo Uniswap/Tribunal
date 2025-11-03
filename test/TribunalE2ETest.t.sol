@@ -432,13 +432,12 @@ contract TribunalE2ETest is DeployTheCompact {
         bridgedTokenChain2.approve(address(tribunalChain2), FILL_AMOUNT);
 
         // Create batch claim for Chain 2
-        ITribunal.BatchClaim memory batchClaim = ITribunal.BatchClaim({
-            chainId: CHAIN_1, compact: compact, sponsorSignature: "", allocatorSignature: ""
-        });
+        ITribunal.BatchClaim memory batchClaim =
+            ITribunal.BatchClaim({compact: compact, sponsorSignature: "", allocatorSignature: ""});
 
         // Execute the cross-chain fill
         (bytes32 returnedClaimHash,, uint256[] memory fillAmounts,) = tribunalChain2.fill(
-            batchClaim,
+            batchClaim.compact,
             fills[0],
             adjuster,
             adjustment,

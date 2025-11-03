@@ -98,7 +98,6 @@ contract TribunalFillRevertsTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -130,7 +129,7 @@ contract TribunalFillRevertsTest is Test {
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -169,7 +168,6 @@ contract TribunalFillRevertsTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -195,7 +193,7 @@ contract TribunalFillRevertsTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("Expired(uint256)", fill.expires));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -235,7 +233,6 @@ contract TribunalFillRevertsTest is Test {
 
         // Use a different chainId to make it a cross-chain fill
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid + 1,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -271,7 +268,7 @@ contract TribunalFillRevertsTest is Test {
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -281,11 +278,11 @@ contract TribunalFillRevertsTest is Test {
             0
         );
 
-        vm.expectRevert(abi.encodeWithSignature("AlreadyClaimed()"));
+        vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 1 ether
         }(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
@@ -324,7 +321,6 @@ contract TribunalFillRevertsTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -351,7 +347,7 @@ contract TribunalFillRevertsTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("InvalidGasPrice()"));
         tribunal.fill(
-            claim,
+            claim.compact,
             fill,
             adjuster,
             adjustment,
