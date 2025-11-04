@@ -23,6 +23,7 @@ import {
     FillParameters,
     FillComponent,
     FillRecipient,
+    FillRequirement,
     RecipientCallback,
     Adjustment,
     DispatchParameters
@@ -1083,18 +1084,22 @@ contract Tribunal is BlockNumberish, ITribunal {
             claimHash = THE_COMPACT.batchClaim(claim);
         }
 
-        // Do a callback to the sender.
-        // Use first component for callback (if exists)
+        // Do a callback to the sender with all fill requirements.
         if (mandate.components.length > 0) {
+            // Build FillRequirement array.
+            FillRequirement[] memory fillRequirements =
+                new FillRequirement[](mandate.components.length);
+            for (uint256 i = 0; i < mandate.components.length; i++) {
+                FillComponent memory fillComponent = mandate.components[i];
+                fillRequirements[i] = FillRequirement({
+                    fillToken: fillComponent.fillToken,
+                    minimumFillAmount: fillComponent.minimumFillAmount,
+                    realizedFillAmount: fillAmounts[i]
+                });
+            }
+
             ITribunalCallback(msg.sender)
-                .tribunalCallback(
-                    claimHash,
-                    compact.commitments,
-                    claimAmounts,
-                    mandate.components[0].fillToken,
-                    mandate.components[0].minimumFillAmount,
-                    fillAmounts[0]
-                );
+                .tribunalCallback(claimHash, compact.commitments, claimAmounts, fillRequirements);
         }
 
         return claimHash;

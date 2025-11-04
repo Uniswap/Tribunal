@@ -15,6 +15,7 @@ import {
     Mandate,
     FillParameters,
     FillComponent,
+    FillRequirement,
     Adjustment,
     RecipientCallback
 } from "../src/types/TribunalStructs.sol";
@@ -60,9 +61,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         bytes32,
         Lock[] calldata,
         uint256[] calldata,
-        address,
-        uint256,
-        uint256
+        FillRequirement[] calldata
     ) external {
         // Empty implementation for testing
     }

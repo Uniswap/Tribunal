@@ -80,6 +80,13 @@ struct FillRecipient {
     address recipient;
 }
 
+// Struct for filler callback that contains all fill component details
+struct FillRequirement {
+    address fillToken; // Token to be provided (address(0) for native).
+    uint256 minimumFillAmount; // Minimum specified fill amount.
+    uint256 realizedFillAmount; // Actual fill amount that must be provided.
+}
+
 // Struct for dispatch callback parameters
 struct DispatchParameters {
     uint256 chainId; // Chain ID the dispatch callback is intended to interact with.

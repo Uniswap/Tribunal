@@ -16,6 +16,7 @@ import {
     Mandate,
     FillParameters,
     FillComponent,
+    FillRequirement,
     Adjustment,
     RecipientCallback,
     DispatchParameters
@@ -80,9 +81,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         bytes32,
         Lock[] calldata,
         uint256[] calldata,
-        address,
-        uint256,
-        uint256
+        FillRequirement[] calldata
     ) external {}
 
     // Implement allocator interface for TheCompact
