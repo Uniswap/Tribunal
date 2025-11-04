@@ -41,11 +41,6 @@ import {
     WITNESS_TYPESTRING
 } from "./types/TribunalTypeHashes.sol";
 
-enum FillType {
-    CrossChain,
-    SameChain
-}
-
 /**
  * @title Tribunal
  * @author 0age
@@ -159,11 +154,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             revert InvalidFillBlock();
         }
 
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            FillType.CrossChain,
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillCrossChain(
             compact,
-            msg.data[0:0], // empty calldata
-            msg.data[0:0], // empty calldata
             mandate,
             adjuster,
             adjustment,
@@ -214,11 +206,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             revert InvalidFillBlock();
         }
 
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            FillType.CrossChain,
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillCrossChain(
             compact,
-            msg.data[0:0], // empty calldata
-            msg.data[0:0], // empty calldata
             mandate,
             adjuster,
             adjustment,
@@ -266,8 +255,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             revert InvalidFillBlock();
         }
 
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            FillType.SameChain,
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillSameChain(
             claim.compact,
             claim.sponsorSignature,
             claim.allocatorSignature,
@@ -795,7 +783,103 @@ contract Tribunal is BlockNumberish, ITribunal {
     // ======== Internal State-changing Functions ========
 
     /**
-     * @notice Internal implementation of the fill function.
+     * @notice Internal implementation of cross-chain fill.
+     * @param compact The compact parameters.
+     * @param mandate The fill conditions and amount derivation parameters.
+     * @param adjuster The assigned adjuster for the fill.
+     * @param adjustment The adjustment provided by the adjuster for the fill.
+     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param fillBlock The block number to target for the fill (0 allows any block).
+     * @param fillHashes An array of the hashes of each fill.
+     * @return claimHash The derived claim hash.
+     * @return mandateHash The derived mandate hash.
+     * @return fillAmounts The amounts of tokens to be filled for each component.
+     * @return claimAmounts The amount of tokens to be claimed.
+     */
+    function _fillCrossChain(
+        BatchCompact calldata compact,
+        Fill calldata mandate,
+        address adjuster,
+        Adjustment calldata adjustment,
+        bytes calldata adjustmentAuthorization,
+        bytes32 claimant,
+        uint256 fillBlock,
+        bytes32[] calldata fillHashes
+    )
+        internal
+        returns (
+            bytes32 claimHash,
+            bytes32 mandateHash,
+            uint256[] memory fillAmounts,
+            uint256[] memory claimAmounts
+        )
+    {
+        // Validate fill conditions and derive mandate hash.
+        mandateHash =
+            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
+
+        // Derive fill and claim amounts.
+        uint256 scalingMultiplier;
+        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
+            compact.commitments,
+            mandate.components,
+            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
+            adjustment.targetBlock,
+            fillBlock,
+            mandate.baselinePriorityFee,
+            mandate.scalingFactor
+        );
+
+        // Derive and check claim hash.
+        claimHash = deriveClaimHash(compact, mandateHash);
+        if (_dispositions[claimHash] != bytes32(0)) {
+            revert AlreadyFilled();
+        }
+
+        // Set the disposition for the given claim hash.
+        _dispositions[claimHash] = claimant;
+
+        // Store the claim reduction scaling factor if claims were reduced.
+        if (scalingMultiplier < BASE_SCALING_FACTOR) {
+            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+        }
+
+        // Verify adjuster authorization.
+        if (!adjuster.isValidSignatureNow(
+                _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
+                adjustmentAuthorization
+            )) {
+            revert InvalidAdjustment();
+        }
+
+        // Transfer fill tokens to recipients.
+        _processFill(mandate, fillAmounts);
+
+        // Build FillRecipient array for event.
+        FillRecipient[] memory fillRecipients = new FillRecipient[](mandate.components.length);
+        for (uint256 i = 0; i < mandate.components.length; i++) {
+            fillRecipients[i] = FillRecipient({
+                fillAmount: fillAmounts[i], recipient: mandate.components[i].recipient
+            });
+        }
+
+        // Emit the fill event.
+        emit CrossChainFill(
+            compact.sponsor,
+            claimant,
+            claimHash,
+            fillRecipients,
+            claimAmounts,
+            adjustment.targetBlock
+        );
+
+        // Perform recipient callback if specified.
+        performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
+    }
+
+    /**
+     * @notice Internal implementation of same-chain fill (with claim execution).
      * @param compact The compact parameters.
      * @param sponsorSignature The signature of the sponsor.
      * @param allocatorSignature The signature of the allocator.
@@ -811,8 +895,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
-    function _fill(
-        FillType fillType,
+    function _fillSameChain(
         BatchCompact calldata compact,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
@@ -832,27 +915,9 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        // Ensure that the mandate has not expired.
-        mandate.expires.later();
-
-        // Ensure correct chainId.
-        if (mandate.chainId != block.chainid) {
-            revert InvalidChainId();
-        }
-
-        address validFiller = address(uint160(uint256(adjustment.validityConditions)));
-
-        assembly ("memory-safe") {
-            validFiller := xor(validFiller, mul(iszero(validFiller), caller()))
-        }
-
-        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> _ADDRESS_BITS;
-        // A validBlockWindow of 0 means no window restriction (valid indefinitely)
-        // A validBlockWindow of 1 means it must be filled on the target block
-        if (((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock))
-            .or(validFiller != msg.sender)) {
-            revert ValidityConditionsNotMet();
-        }
+        // Validate fill conditions and derive mandate hash.
+        mandateHash =
+            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
 
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
@@ -866,11 +931,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             mandate.scalingFactor
         );
 
-        // Derive mandate hash.
-        mandateHash = _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
-
-        claimHash = _processClaimOrDisposition(
-            fillType,
+        // Execute the claim against The Compact.
+        claimHash = _singleChainFill(
             compact,
             mandate,
             sponsorSignature,
@@ -878,8 +940,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             mandateHash,
             fillAmounts,
             claimant,
-            claimAmounts,
-            adjustment
+            claimAmounts
         );
 
         // Store the claim reduction scaling factor if claims were reduced
@@ -887,6 +948,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             _claimReductionScalingFactors[claimHash] = scalingMultiplier;
         }
 
+        // Verify adjuster authorization.
         if (!adjuster.isValidSignatureNow(
                 _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
                 adjustmentAuthorization
@@ -894,26 +956,10 @@ contract Tribunal is BlockNumberish, ITribunal {
             revert InvalidAdjustment();
         }
 
-        // Send the tokens to the recipient.
+        // Transfer fill tokens to recipients.
         _processFill(mandate, fillAmounts);
 
-        // Perform the callback to the recipient if one has been provided.
-        performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
-    }
-
-    function _processClaimOrDisposition(
-        FillType fillType,
-        BatchCompact calldata compact,
-        Fill calldata mandate,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
-        bytes32 mandateHash,
-        uint256[] memory fillAmounts,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        Adjustment calldata adjustment
-    ) internal returns (bytes32 claimHash) {
-        // Build FillRecipient array from components.
+        // Build FillRecipient array for event.
         FillRecipient[] memory fillRecipients = new FillRecipient[](mandate.components.length);
         for (uint256 i = 0; i < mandate.components.length; i++) {
             fillRecipients[i] = FillRecipient({
@@ -921,47 +967,60 @@ contract Tribunal is BlockNumberish, ITribunal {
             });
         }
 
-        if (fillType == FillType.SameChain) {
-            claimHash = _singleChainFill(
-                compact,
-                mandate,
-                sponsorSignature,
-                allocatorSignature,
-                mandateHash,
-                fillAmounts,
-                claimant,
-                claimAmounts
-            );
+        // Emit the fill event.
+        emit SingleChainFill(
+            compact.sponsor,
+            claimant,
+            claimHash,
+            fillRecipients,
+            claimAmounts,
+            adjustment.targetBlock
+        );
 
-            // Emit the fill event.
-            emit SingleChainFill(
-                compact.sponsor,
-                claimant,
-                claimHash,
-                fillRecipients,
-                claimAmounts,
-                adjustment.targetBlock
-            );
-        } else {
-            // Derive and check claim hash.
-            claimHash = deriveClaimHash(compact, mandateHash);
-            if (_dispositions[claimHash] != bytes32(0)) {
-                revert AlreadyFilled();
-            }
+        // Perform recipient callback if specified.
+        performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
+    }
 
-            // Set the disposition for the given claim hash.
-            _dispositions[claimHash] = claimant;
+    /**
+     * @notice Validates fill conditions (expiration, chainId, & adjustment) and derives the mandate hash.
+     * @param mandate The fill mandate.
+     * @param adjuster The assigned adjuster for the fill.
+     * @param adjustment The adjustment parameters.
+     * @param fillBlock The block number for the fill.
+     * @param fillHashes An array of the hashes of each fill.
+     * @return mandateHash The derived mandate hash.
+     */
+    function _validateAndDeriveMandateHash(
+        Fill calldata mandate,
+        address adjuster,
+        Adjustment calldata adjustment,
+        uint256 fillBlock,
+        bytes32[] calldata fillHashes
+    ) internal view returns (bytes32 mandateHash) {
+        // Ensure that the mandate has not expired.
+        mandate.expires.later();
 
-            // Emit the fill event.
-            emit CrossChainFill(
-                compact.sponsor,
-                claimant,
-                claimHash,
-                fillRecipients,
-                claimAmounts,
-                adjustment.targetBlock
-            );
+        // Ensure correct chainId.
+        if (mandate.chainId != block.chainid) {
+            revert InvalidChainId();
         }
+
+        // Validate filler and block window.
+        address validFiller = address(uint160(uint256(adjustment.validityConditions)));
+        assembly ("memory-safe") {
+            validFiller := xor(validFiller, mul(iszero(validFiller), caller()))
+        }
+
+        uint256 validBlockWindow = uint256(adjustment.validityConditions) >> _ADDRESS_BITS;
+        // A validBlockWindow of 0 means no window restriction (valid indefinitely).
+        // A validBlockWindow of 1 means it must be filled on the target block.
+        if (((validBlockWindow != 0).and(adjustment.targetBlock + validBlockWindow <= fillBlock))
+            .or(validFiller != msg.sender)) {
+            revert ValidityConditionsNotMet();
+        }
+
+        // Derive mandate hash.
+        mandateHash = _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
     }
 
     function performRecipientCallback(

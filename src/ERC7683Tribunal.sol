@@ -4,7 +4,7 @@ pragma solidity ^0.8.28;
 import {LibBytes} from "solady/utils/LibBytes.sol";
 
 import {IDestinationSettler} from "./interfaces/IDestinationSettler.sol";
-import {Tribunal, FillType} from "./Tribunal.sol";
+import {Tribunal} from "./Tribunal.sol";
 import {Fill, Adjustment} from "./types/TribunalStructs.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
@@ -49,11 +49,8 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             revert InvalidFillBlock();
         }
 
-        _fill(
-            FillType.CrossChain,
+        _fillCrossChain(
             claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
             mandate,
             adjuster,
             adjustment,

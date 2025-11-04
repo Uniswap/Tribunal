@@ -304,8 +304,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         vm.prank(address(filler));
-        tribunal.fill(
-            claim.compact,
+        tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,
@@ -427,8 +427,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
-        (,, uint256[] memory fillAmounts,) = tribunal.fill(
-            claim.compact,
+        (,, uint256[] memory fillAmounts,) = tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,
@@ -560,8 +560,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         uint256 recipientBalanceBefore = token1.balanceOf(recipient);
 
         vm.prank(address(filler));
-        tribunal.fill(
-            claim.compact,
+        tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,
@@ -689,8 +689,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
-        (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.fill(
-            claim.compact,
+        (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,
@@ -852,8 +852,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         MockRecipientCallback mockCallback = MockRecipientCallback(recipient1);
 
         vm.prank(address(filler));
-        tribunal.fill(
-            claim.compact,
+        tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,

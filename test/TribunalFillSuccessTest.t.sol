@@ -262,10 +262,10 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         uint256 initialFillerBalance = address(filler).balance;
         vm.prank(address(filler));
-        tribunal.fill{
+        tribunal.fillAndClaim{
             value: 1 ether
         }(
-            claim.compact,
+            claim,
             fill,
             adjuster,
             adjustment,
@@ -398,8 +398,8 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         claimAmounts[0] = commitments[0].amount;
 
         vm.prank(address(filler));
-        tribunal.fill(
-            claim.compact,
+        tribunal.fillAndClaim(
+            claim,
             fill,
             adjuster,
             adjustment,

@@ -255,10 +255,10 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         // The first fill should succeed despite the reentrancy attempt
         // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         vm.prank(address(filler));
-        tribunal.fill{
+        tribunal.fillAndClaim{
             value: 1 ether
         }(
-            claim.compact,
+            claim,
             fill,
             adjuster,
             adjustment,
