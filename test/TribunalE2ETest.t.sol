@@ -10,7 +10,7 @@ import {DeployTheCompact} from "./helpers/DeployTheCompact.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "../lib/the-compact/src/types/EIP712Types.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     RecipientCallback,
     Adjustment,
@@ -317,7 +317,7 @@ contract TribunalE2ETest is DeployTheCompact {
         });
 
         // Create fills array (cross-chain fill and same-chain fallback)
-        Fill[] memory fills = new Fill[](2);
+        FillParameters[] memory fills = new FillParameters[](2);
 
         // Cross-chain fill (Chain 2)
         FillComponent[] memory components0 = new FillComponent[](1);
@@ -328,7 +328,7 @@ contract TribunalE2ETest is DeployTheCompact {
             applyScaling: false
         });
 
-        fills[0] = Fill({
+        fills[0] = FillParameters({
             chainId: CHAIN_2,
             tribunal: address(tribunalChain2),
             expires: block.timestamp + 1 hours,
@@ -357,7 +357,7 @@ contract TribunalE2ETest is DeployTheCompact {
             applyScaling: false
         });
 
-        fills[1] = Fill({
+        fills[1] = FillParameters({
             chainId: CHAIN_1,
             tribunal: address(tribunalChain1),
             expires: block.timestamp + 2 hours,

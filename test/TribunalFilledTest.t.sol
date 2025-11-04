@@ -7,7 +7,7 @@ import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback,
@@ -47,7 +47,7 @@ contract TribunalFilledTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
@@ -86,7 +86,7 @@ contract TribunalFilledTest is Test {
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         // Build a Mandate struct to compute the hash properly
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandateStruct.fills[0] = fill;
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
@@ -107,9 +107,9 @@ contract TribunalFilledTest is Test {
         FillRecipient[] memory fillRecipients = new FillRecipient[](1);
         fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xCAFE)});
 
-        // Expect CrossChainFill event for cross-chain fills
+        // Expect Fill event for cross-chain fills
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit ITribunal.CrossChainFill(
+        emit ITribunal.Fill(
             sponsor,
             bytes32(uint256(uint160(address(this)))),
             actualClaimHash,

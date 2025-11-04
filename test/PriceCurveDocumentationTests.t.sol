@@ -5,7 +5,12 @@ import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    FillParameters,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {PriceCurveTestHelper} from "./helpers/PriceCurveTestHelper.sol";
 

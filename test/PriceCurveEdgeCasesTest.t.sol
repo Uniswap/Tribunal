@@ -7,7 +7,7 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback
@@ -417,7 +417,7 @@ contract PriceCurveEdgeCasesTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: block.timestamp + 1 hours,

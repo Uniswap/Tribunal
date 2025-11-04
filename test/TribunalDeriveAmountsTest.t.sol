@@ -4,7 +4,12 @@ pragma solidity ^0.8.28;
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
-import {Mandate, Fill, Adjustment, RecipientCallback} from "../src/types/TribunalStructs.sol";
+import {
+    Mandate,
+    FillParameters,
+    Adjustment,
+    RecipientCallback
+} from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 contract TribunalDeriveAmountsTest is Test {

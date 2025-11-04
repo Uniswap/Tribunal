@@ -13,7 +13,7 @@ import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {IRecipientCallback} from "../src/interfaces/IRecipientCallback.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback,
@@ -44,7 +44,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
     uint256[] public emptyPriceCurve;
 
     // Event definitions for testing
-    event SingleChainFill(
+    event FillWithClaim(
         address indexed sponsor,
         bytes32 indexed claimant,
         bytes32 claimHash,
@@ -224,7 +224,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -236,7 +236,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -294,7 +294,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         expectedClaimAmounts[0] = 225e18;
 
         vm.expectEmit(true, true, false, true);
-        emit SingleChainFill(
+        emit FillWithClaim(
             sponsor,
             bytes32(uint256(uint160(address(filler)))),
             claimHash,
@@ -357,7 +357,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         priceCurve[0] = (10 << 240) | uint256(1.2e18);
 
         // Use exact-in mode (scalingFactor > 1e18) with priority fee scaling
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -369,7 +369,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -497,7 +497,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -509,7 +509,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -619,7 +619,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         // Use exact-out mode (scalingFactor < 1e18) with a less aggressive scaling factor
         // to avoid underflow when combined with priority fees
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -631,7 +631,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -788,7 +788,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             context: hex"1234"
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -800,7 +800,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);

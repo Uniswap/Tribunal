@@ -14,7 +14,7 @@ import {FillerContract} from "./mocks/FillerContract.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback,
@@ -188,7 +188,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         internal
         returns (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             bytes32 mandateHash,
@@ -209,7 +209,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        fill = Fill({
+        fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -221,7 +221,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -261,7 +261,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_FillAndDispatch_Success() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             bytes32 mandateHash,
@@ -339,7 +339,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_FillThenDispatch_Success() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             bytes32 mandateHash,
@@ -504,7 +504,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_FillAndDispatch_RevertsOnCallbackRevert() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             ,
@@ -541,7 +541,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_FillAndDispatch_RevertsOnWrongSelector() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             ,
@@ -578,7 +578,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_Dispatch_RevertsOnCallbackRevert() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             bytes32 mandateHash,
@@ -619,7 +619,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function test_Dispatch_RevertsOnWrongSelector() public {
         (
             ITribunal.BatchClaim memory claim,
-            Fill memory fill,
+            FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
             bytes32 mandateHash,

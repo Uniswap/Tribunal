@@ -12,7 +12,7 @@ import {FillerContract} from "./mocks/FillerContract.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback
@@ -170,7 +170,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -182,7 +182,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -299,7 +299,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -311,7 +311,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);

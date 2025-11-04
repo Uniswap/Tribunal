@@ -7,7 +7,7 @@ import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback
@@ -61,7 +61,7 @@ contract TribunalBasicTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
@@ -73,7 +73,7 @@ contract TribunalBasicTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         bytes32 fillsHash = keccak256(abi.encodePacked(tribunal.deriveFillHash(fill)));
@@ -92,7 +92,7 @@ contract TribunalBasicTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
@@ -104,7 +104,7 @@ contract TribunalBasicTest is Test {
             salt: bytes32(uint256(2))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         bytes32 fillsHash = keccak256(abi.encodePacked(tribunal.deriveFillHash(fill)));
@@ -123,7 +123,7 @@ contract TribunalBasicTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800,
@@ -135,7 +135,7 @@ contract TribunalBasicTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);

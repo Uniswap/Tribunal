@@ -3,7 +3,7 @@ pragma solidity ^0.8.28;
 
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     Mandate,
@@ -21,7 +21,7 @@ import {
 interface ITribunal {
     // ======== Events ========
     /**
-     * @notice Emitted when a cross-chain fill is successfully executed.
+     * @notice Emitted when a standard fill is successfully executed.
      * @param sponsor The address that created the compact to be claimed.
      * @param claimant The bytes32 value representing the claimant (lock tag ++ address).
      * @param claimHash The hash of the compact being claimed.
@@ -29,7 +29,7 @@ interface ITribunal {
      * @param claimAmounts The amounts of tokens to be claimed on the source chain.
      * @param targetBlock The target block number for the fill.
      */
-    event CrossChainFill(
+    event Fill(
         address indexed sponsor,
         bytes32 indexed claimant,
         bytes32 claimHash,
@@ -39,15 +39,15 @@ interface ITribunal {
     );
 
     /**
-     * @notice Emitted when a single-chain fill is successfully executed.
-     * @param sponsor The address that created the compact to be claimed.
+     * @notice Emitted when a same-chain claim and fill is successfully executed.
+     * @param sponsor The address that created the claimed compact.
      * @param claimant The bytes32 value representing the claimant (lock tag ++ address).
-     * @param claimHash The hash of the compact being claimed.
+     * @param claimHash The hash of the claimed compact.
      * @param fillRecipients Array of fill amounts and their corresponding recipients.
      * @param claimAmounts The amounts of tokens claimed.
      * @param targetBlock The target block number for the fill.
      */
-    event SingleChainFill(
+    event FillWithClaim(
         address indexed sponsor,
         bytes32 indexed claimant,
         bytes32 claimHash,
@@ -109,7 +109,7 @@ interface ITribunal {
     }
 
     /**
-     * @notice Attempt to perform a cross-chain fill.
+     * @notice Attempt to perform a standard fill.
      * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
@@ -125,7 +125,7 @@ interface ITribunal {
      */
     function fill(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -143,7 +143,7 @@ interface ITribunal {
         );
 
     /**
-     * @notice Attempt to perform a cross-chain fill and execute a dispatch callback.
+     * @notice Attempt to perform a standard fill and execute a dispatch callback.
      * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
@@ -160,7 +160,7 @@ interface ITribunal {
      */
     function fillAndDispatch(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -196,7 +196,7 @@ interface ITribunal {
      */
     function fillAndClaim(
         BatchClaim calldata claim,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -302,14 +302,14 @@ interface ITribunal {
      * @param fills The array of fills containing all hash parameters.
      * @return The derived fills array hash.
      */
-    function deriveFillsHash(Fill[] calldata fills) external view returns (bytes32);
+    function deriveFillsHash(FillParameters[] calldata fills) external view returns (bytes32);
 
     /**
      * @notice Derives a fill hash using EIP-712 typed data.
      * @param targetFill The fill containing all hash parameters.
      * @return The derived fill hash.
      */
-    function deriveFillHash(Fill calldata targetFill) external view returns (bytes32);
+    function deriveFillHash(FillParameters calldata targetFill) external view returns (bytes32);
 
     /**
      * @notice Derives a fill component hash using EIP-712 typed data.

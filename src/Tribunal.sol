@@ -19,12 +19,12 @@ import {ITribunalCallback} from "./interfaces/ITribunalCallback.sol";
 import {IDispatchCallback} from "./interfaces/IDispatchCallback.sol";
 import {ITribunal} from "./interfaces/ITribunal.sol";
 import {
-    Adjustment,
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
-    RecipientCallback,
     FillRecipient,
+    RecipientCallback,
+    Adjustment,
     DispatchParameters
 } from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
@@ -126,7 +126,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @inheritdoc ITribunal
     function fill(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -144,17 +144,9 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        uint256 currentBlock = _getBlockNumberish();
+        fillBlock = _validateFillBlock(fillBlock);
 
-        assembly ("memory-safe") {
-            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
-        }
-
-        if (fillBlock != currentBlock) {
-            revert InvalidFillBlock();
-        }
-
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillCrossChain(
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
             compact,
             mandate,
             adjuster,
@@ -177,7 +169,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @inheritdoc ITribunal
     function fillAndDispatch(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -196,17 +188,9 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        uint256 currentBlock = _getBlockNumberish();
+        fillBlock = _validateFillBlock(fillBlock);
 
-        assembly ("memory-safe") {
-            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
-        }
-
-        if (fillBlock != currentBlock) {
-            revert InvalidFillBlock();
-        }
-
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillCrossChain(
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
             compact,
             mandate,
             adjuster,
@@ -227,7 +211,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     /// @inheritdoc ITribunal
     function fillAndClaim(
         BatchClaim calldata claim,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -245,17 +229,9 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        uint256 currentBlock = _getBlockNumberish();
+        fillBlock = _validateFillBlock(fillBlock);
 
-        assembly ("memory-safe") {
-            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
-        }
-
-        if (fillBlock != currentBlock) {
-            revert InvalidFillBlock();
-        }
-
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fillSameChain(
+        (claimHash, mandateHash, fillAmounts, claimAmounts) = _claimAndFill(
             claim.compact,
             claim.sponsorSignature,
             claim.allocatorSignature,
@@ -521,7 +497,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function deriveFillsHash(Fill[] calldata fills) public view returns (bytes32) {
+    function deriveFillsHash(FillParameters[] calldata fills) public view returns (bytes32) {
         bytes32[] memory fillHashes = new bytes32[](fills.length);
         for (uint256 i = 0; i < fills.length; ++i) {
             fillHashes[i] = deriveFillHash(fills[i]);
@@ -530,7 +506,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function deriveFillHash(Fill calldata targetFill) public view returns (bytes32) {
+    function deriveFillHash(FillParameters calldata targetFill) public view returns (bytes32) {
         return keccak256(
             abi.encode(
                 MANDATE_FILL_TYPEHASH,
@@ -783,7 +759,28 @@ contract Tribunal is BlockNumberish, ITribunal {
     // ======== Internal State-changing Functions ========
 
     /**
-     * @notice Internal implementation of cross-chain fill.
+     * @notice Validates the fill block parameter against the current block.
+     * @param fillBlock The fill block parameter (0 allows current block).
+     * @return normalizedFillBlock The normalized fill block (current block if input was 0).
+     */
+    function _validateFillBlock(uint256 fillBlock)
+        internal
+        view
+        returns (uint256 normalizedFillBlock)
+    {
+        uint256 currentBlock = _getBlockNumberish();
+
+        assembly ("memory-safe") {
+            normalizedFillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
+        }
+
+        if (normalizedFillBlock != currentBlock) {
+            revert InvalidFillBlock();
+        }
+    }
+
+    /**
+     * @notice Internal implementation of a standard fill.
      * @param compact The compact parameters.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjuster The assigned adjuster for the fill.
@@ -797,9 +794,9 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
-    function _fillCrossChain(
+    function _fill(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -865,7 +862,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Emit the fill event.
-        emit CrossChainFill(
+        emit Fill(
             compact.sponsor,
             claimant,
             claimHash,
@@ -879,7 +876,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Internal implementation of same-chain fill (with claim execution).
+     * @notice Internal implementation of same-chain fill with a preceding claim execution.
      * @param compact The compact parameters.
      * @param sponsorSignature The signature of the sponsor.
      * @param allocatorSignature The signature of the allocator.
@@ -895,11 +892,11 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
-    function _fillSameChain(
+    function _claimAndFill(
         BatchCompact calldata compact,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         bytes calldata adjustmentAuthorization,
@@ -931,8 +928,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             mandate.scalingFactor
         );
 
-        // Execute the claim against The Compact.
-        claimHash = _singleChainFill(
+        // Execute the claim against The Compact and perform callback to filler.
+        claimHash = _processClaimAndCallback(
             compact,
             mandate,
             sponsorSignature,
@@ -968,7 +965,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Emit the fill event.
-        emit SingleChainFill(
+        emit FillWithClaim(
             compact.sponsor,
             claimant,
             claimHash,
@@ -991,7 +988,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return mandateHash The derived mandate hash.
      */
     function _validateAndDeriveMandateHash(
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         address adjuster,
         Adjustment calldata adjustment,
         uint256 fillBlock,
@@ -1024,7 +1021,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     function performRecipientCallback(
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         bytes32 claimHash,
         bytes32 mandateHash,
         uint256[] memory fillAmounts
@@ -1051,9 +1048,9 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
     }
 
-    function _singleChainFill(
+    function _processClaimAndCallback(
         BatchCompact calldata compact,
-        Fill calldata mandate,
+        FillParameters calldata mandate,
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         bytes32 mandateHash,
@@ -1086,7 +1083,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             claimHash = THE_COMPACT.batchClaim(claim);
         }
 
-        // Do a callback to the sender
+        // Do a callback to the sender.
         // Use first component for callback (if exists)
         if (mandate.components.length > 0) {
             ITribunalCallback(msg.sender)
@@ -1130,7 +1127,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         return claimHash;
     }
 
-    function _processFill(Fill calldata mandate, uint256[] memory fillAmounts) internal {
+    function _processFill(FillParameters calldata mandate, uint256[] memory fillAmounts) internal {
         // Process each fill component
         for (uint256 i = 0; i < mandate.components.length; i++) {
             FillComponent calldata component = mandate.components[i];
@@ -1264,7 +1261,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return The derived mandate hash.
      */
     function _deriveMandateHash(
-        Fill calldata targetFill,
+        FillParameters calldata targetFill,
         address adjuster,
         uint256 fillIndex,
         bytes32[] calldata fillHashes

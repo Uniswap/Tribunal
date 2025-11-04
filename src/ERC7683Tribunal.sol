@@ -5,7 +5,7 @@ import {LibBytes} from "solady/utils/LibBytes.sol";
 
 import {IDestinationSettler} from "./interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
-import {Fill, Adjustment} from "./types/TribunalStructs.sol";
+import {FillParameters, Adjustment} from "./types/TribunalStructs.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 /// @title ERC7683Tribunal
@@ -30,7 +30,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     {
         (
             BatchClaim calldata claim,
-            Fill calldata mandate,
+            FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
             Adjustment calldata adjustment,
@@ -39,24 +39,14 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             uint256 fillBlock
         ) = _parseCalldata(originData, fillerData);
 
-        uint256 currentBlock = _getBlockNumberish();
-
-        assembly ("memory-safe") {
-            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
-        }
-
-        if (fillBlock != currentBlock) {
-            revert InvalidFillBlock();
-        }
-
-        _fillCrossChain(
+        _fill(
             claim.compact,
             mandate,
             adjuster,
             adjustment,
             adjustmentAuthorization,
             claimant,
-            fillBlock,
+            _validateFillBlock(fillBlock),
             fillHashes
         );
     }
@@ -96,7 +86,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         pure
         returns (
             BatchClaim calldata claim,
-            Fill calldata mandate,
+            FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
             Adjustment calldata adjustment,

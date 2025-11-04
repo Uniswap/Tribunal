@@ -7,7 +7,7 @@ import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback,
@@ -47,7 +47,7 @@ contract TribunalCancelTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -59,7 +59,7 @@ contract TribunalCancelTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandateStruct.fills[0] = fill;
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
@@ -162,7 +162,7 @@ contract TribunalCancelTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -174,7 +174,7 @@ contract TribunalCancelTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandateStruct.fills[0] = fill;
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
@@ -204,7 +204,7 @@ contract TribunalCancelTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -284,7 +284,7 @@ contract TribunalCancelTest is Test {
         fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xBEEF)});
 
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit ITribunal.CrossChainFill(
+        emit ITribunal.Fill(
             sponsor,
             bytes32(uint256(uint160(address(this)))),
             claimHash,
@@ -323,7 +323,7 @@ contract TribunalCancelTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(expires),
@@ -335,7 +335,7 @@ contract TribunalCancelTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandateStruct.fills[0] = fill;
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
@@ -366,7 +366,7 @@ contract TribunalCancelTest is Test {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -378,7 +378,7 @@ contract TribunalCancelTest is Test {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandateStruct = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandateStruct.fills[0] = fill;
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandateStruct);
