@@ -52,7 +52,7 @@ struct Mandate {
 
 #### Fill Structure
 ```solidity
-struct Fill {
+struct FillParameters {
     uint256 chainId;               // Chain where fill occurs
     address tribunal;              // Tribunal contract address
     uint256 expires;               // Fill expiration timestamp

@@ -31,11 +31,11 @@ import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 // Parent mandate signed by the sponsor on source chain. Note that the EIP-712 payload differs slightly from the structs declared here (mainly around utilizing full mandates rather than mandate hashes).
 struct Mandate {
     address adjuster;
-    Fill[] fills; // Arbitrary-length array; note that in EIP-712 payload this is Mandate_Fill
+    FillParameters[] fills; // Arbitrary-length array; note that in EIP-712 payload this is Mandate_Fill
 }
 
 // Mandate_Fill in EIP-712 payload
-struct Fill {
+struct FillParameters {
     uint256 chainId; // Same-chain if value matches chainId(), otherwise cross-chain
     address tribunal; // Contract where the fill is performed.
     uint256 expires; // Fill expiration timestamp.
@@ -78,4 +78,19 @@ struct Adjustment {
 struct FillRecipient {
     uint256 fillAmount;
     address recipient;
+}
+
+// Struct for filler callback that contains all fill component details
+struct FillRequirement {
+    address fillToken; // Token to be provided (address(0) for native).
+    uint256 minimumFillAmount; // Minimum specified fill amount.
+    uint256 realizedFillAmount; // Actual fill amount that must be provided.
+}
+
+// Struct for dispatch callback parameters
+struct DispatchParameters {
+    uint256 chainId; // Chain ID the dispatch callback is intended to interact with.
+    address target; // Address that will receive the dispatch callback.
+    uint256 value; // Amount of native tokens to send with the callback.
+    bytes context; // Arbitrary context data to pass to the callback.
 }

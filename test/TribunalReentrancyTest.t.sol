@@ -13,8 +13,9 @@ import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
+    FillRequirement,
     Adjustment,
     RecipientCallback
 } from "../src/types/TribunalStructs.sol";
@@ -60,9 +61,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         bytes32,
         Lock[] calldata,
         uint256[] calldata,
-        address,
-        uint256,
-        uint256
+        FillRequirement[] calldata
     ) external {
         // Empty implementation for testing
     }
@@ -160,7 +159,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -172,7 +171,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -195,7 +194,6 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -256,7 +254,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         // The first fill should succeed despite the reentrancy attempt
         // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         vm.prank(address(filler));
-        tribunal.fill{
+        tribunal.fillAndClaim{
             value: 1 ether
         }(
             claim,

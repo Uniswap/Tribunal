@@ -6,7 +6,7 @@ import {Tribunal} from "../src/Tribunal.sol";
 import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback
@@ -105,7 +105,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             applyScaling: true
         });
 
-        Fill memory fillData = Fill({
+        FillParameters memory fillData = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: block.timestamp + 1 days,
@@ -117,7 +117,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             salt: 0
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fillData;
 
         BatchCompact memory compact = BatchCompact({
@@ -136,10 +136,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161, // Different chain for cross-chain fill
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -160,7 +157,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,
@@ -199,7 +196,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             applyScaling: true
         });
 
-        Fill memory fillData = Fill({
+        FillParameters memory fillData = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: block.timestamp + 1 days,
@@ -211,7 +208,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             salt: 0
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fillData;
 
         BatchCompact memory compact = BatchCompact({
@@ -230,10 +227,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161, // Different chain
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -254,7 +248,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,
@@ -285,7 +279,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         // Use a very aggressive scaling factor and high priority fee to drive scaling to 0
         // scalingFactor = 0 means we want to scale down from 1e18
         // With high priority fee, this could reach 0
-        Fill memory fillData = Fill({
+        FillParameters memory fillData = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: block.timestamp + 1 days,
@@ -297,7 +291,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             salt: 0
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fillData;
 
         BatchCompact memory compact = BatchCompact({
@@ -316,10 +310,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: 42161,
-            compact: compact,
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
+            compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -346,7 +337,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         vm.expectRevert();
         vm.prank(filler);
         tribunal.fill(
-            claim,
+            claim.compact,
             fillData,
             adjuster,
             adjustment,

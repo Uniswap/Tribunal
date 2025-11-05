@@ -12,8 +12,9 @@ import {FillerContract} from "./mocks/FillerContract.sol";
 import {ITribunalCallback} from "../src/interfaces/ITribunalCallback.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
+    FillRequirement,
     Adjustment,
     RecipientCallback
 } from "../src/types/TribunalStructs.sol";
@@ -134,9 +135,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         bytes32,
         Lock[] calldata,
         uint256[] calldata,
-        address,
-        uint256,
-        uint256
+        FillRequirement[] calldata
     ) external {
         // Empty implementation for testing
     }
@@ -170,7 +169,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -182,7 +181,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -206,7 +205,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -263,7 +261,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         uint256 initialFillerBalance = address(filler).balance;
         vm.prank(address(filler));
-        tribunal.fill{
+        tribunal.fillAndClaim{
             value: 1 ether
         }(
             claim,
@@ -300,7 +298,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             applyScaling: false
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -312,7 +310,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
 
         Lock[] memory commitments = new Lock[](1);
@@ -336,7 +334,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         );
 
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: block.chainid,
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -400,7 +397,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         claimAmounts[0] = commitments[0].amount;
 
         vm.prank(address(filler));
-        tribunal.fill(
+        tribunal.fillAndClaim(
             claim,
             fill,
             adjuster,

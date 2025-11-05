@@ -9,7 +9,7 @@ import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {FixedPointMathLib} from "the-compact/lib/solady/src/utils/FixedPointMathLib.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     Adjustment,
     RecipientCallback,
@@ -134,10 +134,7 @@ abstract contract MockSetup is Test {
 
     function _getClaim() internal view returns (ITribunal.BatchClaim memory) {
         return ITribunal.BatchClaim({
-            chainId: sourceChainId,
-            compact: _getBatchCompact(),
-            sponsorSignature: hex"abcd",
-            allocatorSignature: hex"1234"
+            compact: _getBatchCompact(), sponsorSignature: hex"abcd", allocatorSignature: hex"1234"
         });
     }
 
@@ -154,12 +151,12 @@ abstract contract MockSetup is Test {
     }
 
     function _getMandate() internal view returns (Mandate memory) {
-        Fill[] memory fills = new Fill[](1);
+        FillParameters[] memory fills = new FillParameters[](1);
         fills[0] = _getFill();
         return Mandate({adjuster: adjuster, fills: fills});
     }
 
-    function _getFill() internal view returns (Fill memory) {
+    function _getFill() internal view returns (FillParameters memory) {
         FillComponent[] memory components = new FillComponent[](1);
         components[0] = FillComponent({
             fillToken: address(token),
@@ -168,7 +165,7 @@ abstract contract MockSetup is Test {
             applyScaling: true
         });
 
-        return Fill({
+        return FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800, // 2023-12-21 00:00:00 UTC
@@ -279,7 +276,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
 
     function test_revert_InvalidOriginData_InvlaidLength() public {
         ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
-            chainId: sourceChainId,
             compact: BatchCompact({
                 arbiter: arbiter,
                 sponsor: sponsor,
@@ -298,7 +294,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
             applyScaling: true
         });
 
-        Fill memory fill = Fill({
+        FillParameters memory fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: 1703116800, // 2023-12-21 00:00:00 UTC
@@ -318,7 +314,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
             supplementalPriceCurve: new uint256[](0),
             validityConditions: bytes32(0)
         });
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new Fill[](1)});
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
         mandate.fills[0] = fill;
         bytes memory adjustmentAuthorization =
             _toAdjustmentSignature(adjustment, claim.compact, mandate);
@@ -435,8 +431,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
 
         vm.prank(filler_);
         vm.expectEmit(true, true, true, true, address(tribunal));
-        emit ITribunal.CrossChainFill(
-            sourceChainId,
+        emit ITribunal.Fill(
             sponsor,
             bytes32(uint256(uint160(filler))),
             claimHash,

@@ -5,12 +5,13 @@ import {LibBytes} from "solady/utils/LibBytes.sol";
 
 import {IDestinationSettler} from "./interfaces/IDestinationSettler.sol";
 import {Tribunal} from "./Tribunal.sol";
-import {Fill, Adjustment} from "./types/TribunalStructs.sol";
+import {FillParameters, Adjustment} from "./types/TribunalStructs.sol";
 import {BatchCompact} from "the-compact/src/types/EIP712Types.sol";
 
 /// @title ERC7683Tribunal
 /// @custom:security-contact security@uniswap.org
 /// @notice A contract that enables the tribunal compatibility with the ERC7683 destination settler interface.
+/// @dev IMPORTANT NOTE: this contract (specifically the low-level decoding) is probably broken at the moment!
 contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     // ======== Constructor ========
     constructor() Tribunal() {}
@@ -29,7 +30,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
     {
         (
             BatchClaim calldata claim,
-            Fill calldata mandate,
+            FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
             Adjustment calldata adjustment,
@@ -38,27 +39,14 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             uint256 fillBlock
         ) = _parseCalldata(originData, fillerData);
 
-        uint256 currentBlock = _getBlockNumberish();
-
-        assembly ("memory-safe") {
-            fillBlock := xor(fillBlock, mul(iszero(fillBlock), currentBlock))
-        }
-
-        if (fillBlock != currentBlock) {
-            revert InvalidFillBlock();
-        }
-
         _fill(
-            claim.chainId,
             claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
             mandate,
             adjuster,
             adjustment,
             adjustmentAuthorization,
             claimant,
-            fillBlock,
+            _validateFillBlock(fillBlock),
             fillHashes
         );
     }
@@ -98,7 +86,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         pure
         returns (
             BatchClaim calldata claim,
-            Fill calldata mandate,
+            FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
             address adjuster,
             Adjustment calldata adjustment,
@@ -108,12 +96,12 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         )
     {
         /*
-         * Need 31 words in originData at minimum:
+         * Need 30 words in originData at minimum:
          *  - 1 word for offset to claim (dynamic struct).
          *  - 1 word for offset to the main fill (dynamic struct).
          *  - 1 word for adjuster address.
          *  - 1 word for offset to fillHashes.
-         *  - 5 words for fixed claim fields (chainId, BatchCompact.arbiter, BatchCompact.sponsor, BatchCompact.nonce, BatchCompact.expires).
+         *  - 4 words for fixed claim fields (BatchCompact.arbiter, BatchCompact.sponsor, BatchCompact.nonce, BatchCompact.expires).
          *  - 9 words for fixed mandate fields.
          *  - 1 word for offset to claim.BatchCompact
          *  - 5 words for dynamic offsets (BatchCompact.commitments, sponsorSignature, allocatorSignature, Fill.priceCurve and Fill.recipientCallback).
@@ -133,7 +121,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          */
         assembly ("memory-safe") {
             if or(
-                or(lt(originData.length, 0x3E0), xor(calldataload(originData.offset), 0x80)),
+                or(lt(originData.length, 0x3C0), xor(calldataload(originData.offset), 0x80)),
                 or(lt(fillerData.length, 0x140), xor(calldataload(fillerData.offset), 0x80))
             ) { revert(0, 0) }
         }

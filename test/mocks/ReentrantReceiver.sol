@@ -5,7 +5,7 @@ import {Tribunal} from "../../src/Tribunal.sol";
 import {ITribunal} from "../../src/interfaces/ITribunal.sol";
 import {
     Mandate,
-    Fill,
+    FillParameters,
     FillComponent,
     RecipientCallback,
     Adjustment
@@ -22,7 +22,6 @@ contract ReentrantReceiver {
     constructor(Tribunal _tribunal) payable {
         _TRIBUNAL = _tribunal;
         _claim = ITribunal.BatchClaim({
-            chainId: 1,
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: address(this),
@@ -33,7 +32,7 @@ contract ReentrantReceiver {
             sponsorSignature: new bytes(0),
             allocatorSignature: new bytes(0)
         });
-        _mandate = Mandate({adjuster: address(this), fills: new Fill[](1)});
+        _mandate = Mandate({adjuster: address(this), fills: new FillParameters[](1)});
         FillComponent[] memory components = new FillComponent[](1);
         components[0] = FillComponent({
             fillToken: address(0),
@@ -42,7 +41,7 @@ contract ReentrantReceiver {
             applyScaling: true
         });
 
-        _mandate.fills[0] = Fill({
+        _mandate.fills[0] = FillParameters({
             chainId: block.chainid,
             tribunal: address(_TRIBUNAL),
             expires: type(uint32).max,
@@ -68,7 +67,7 @@ contract ReentrantReceiver {
 
         uint256 balanceBefore = address(this).balance;
         try _TRIBUNAL.fill(
-            _claim,
+            _claim.compact,
             _mandate.fills[0],
             address(this),
             adjustment,
@@ -84,11 +83,11 @@ contract ReentrantReceiver {
         } catch {}
     }
 
-    function getMandate() public view returns (Fill memory) {
+    function getMandate() public view returns (FillParameters memory) {
         return _mandate.fills[0];
     }
 
-    function getClaim() public view returns (Tribunal.BatchClaim memory) {
+    function getClaim() public view returns (ITribunal.BatchClaim memory) {
         return _claim;
     }
 }
