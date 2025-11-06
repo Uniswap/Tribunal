@@ -291,6 +291,16 @@ interface ITribunal {
     function filled(bytes32 claimHash) external view returns (bytes32);
 
     /**
+     * @notice Returns the claim reduction scaling factor for a given claim hash.
+     * @param claimHash The claim hash to query.
+     * @return scalingFactor The scaling factor (returns 1e18 if not set, 0 if cancelled).
+     */
+    function claimReductionScalingFactor(bytes32 claimHash)
+        external
+        view
+        returns (uint256 scalingFactor);
+
+    /**
      * @notice Derives the mandate hash using EIP-712 typed data.
      * @param mandate The mandate containing all hash parameters.
      * @return The derived mandate hash.
