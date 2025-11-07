@@ -13,7 +13,8 @@ import {
     FillComponent,
     Adjustment,
     RecipientCallback,
-    FillRecipient
+    FillRecipient,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
@@ -132,8 +133,8 @@ abstract contract MockSetup is Test {
         });
     }
 
-    function _getClaim() internal view returns (ITribunal.BatchClaim memory) {
-        return ITribunal.BatchClaim({
+    function _getClaim() internal view returns (BatchClaim memory) {
+        return BatchClaim({
             compact: _getBatchCompact(), sponsorSignature: hex"abcd", allocatorSignature: hex"1234"
         });
     }
@@ -275,7 +276,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidOriginData_InvlaidLength() public {
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: arbiter,
                 sponsor: sponsor,

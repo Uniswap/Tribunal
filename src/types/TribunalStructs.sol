@@ -74,23 +74,43 @@ struct Adjustment {
     bytes32 validityConditions; // Optional value consisting of a number of blocks past the target and a exclusive filler address.
 }
 
-// Struct for event emissions that pairs fill amounts with recipients
+// Struct for event emissions that pairs fill amounts with recipients.
 struct FillRecipient {
     uint256 fillAmount;
     address recipient;
 }
 
-// Struct for filler callback that contains all fill component details
+// Struct for filler callback that contains all fill component details.
 struct FillRequirement {
     address fillToken; // Token to be provided (address(0) for native).
     uint256 minimumFillAmount; // Minimum specified fill amount.
     uint256 realizedFillAmount; // Actual fill amount that must be provided.
 }
 
-// Struct for dispatch callback parameters
+// Struct for dispatch callback parameters.
 struct DispatchParameters {
     uint256 chainId; // Chain ID the dispatch callback is intended to interact with.
     address target; // Address that will receive the dispatch callback.
     uint256 value; // Amount of native tokens to send with the callback.
     bytes context; // Arbitrary context data to pass to the callback.
+}
+
+// A disposition refers to a successful fill. Tribunal allows the filler to assign
+// an indicated claimant and scaling factor that should be applied to a subsequent
+// claim, though the arbiter is ultimately responsible for their application.
+struct DispositionDetails {
+    bytes32 claimant;
+    uint256 scalingFactor;
+}
+
+struct BatchClaim {
+    BatchCompact compact;
+    bytes sponsorSignature; // Authorization from the sponsor
+    bytes allocatorSignature; // Authorization from the allocator
+}
+
+struct ArgDetail {
+    string tokenPath;
+    string argPath;
+    string description;
 }

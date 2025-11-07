@@ -10,7 +10,8 @@ import {
     FillParameters,
     FillComponent,
     Adjustment,
-    RecipientCallback
+    RecipientCallback,
+    ArgDetail
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {WITNESS_TYPESTRING} from "../src/types/TribunalTypeHashes.sol";
@@ -180,7 +181,7 @@ contract TribunalBasicTest is Test {
     }
 
     function test_GetCompactWitnessDetails() public view {
-        (string memory witnessTypeString, ITribunal.ArgDetail[] memory details) =
+        (string memory witnessTypeString, ArgDetail[] memory details) =
             tribunal.getCompactWitnessDetails();
 
         assertEq(witnessTypeString, string.concat("Mandate(", WITNESS_TYPESTRING, ")"));

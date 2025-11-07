@@ -26,7 +26,10 @@ import {
     FillRequirement,
     RecipientCallback,
     Adjustment,
-    DispatchParameters
+    DispatchParameters,
+    BatchClaim,
+    DispositionDetails,
+    ArgDetail
 } from "./types/TribunalStructs.sol";
 import {DomainLib} from "./lib/DomainLib.sol";
 import {IRecipientCallback} from "./interfaces/IRecipientCallback.sol";
@@ -45,6 +48,7 @@ import {
 /**
  * @title Tribunal
  * @author 0age
+ * @custom:version 0 (Proof-of-concept)
  * @custom:security-contact security@uniswap.org
  * @notice Tribunal is a framework for processing cross-chain swap settlements against PGA (priority gas auction)
  * blockchains. It ensures that tokens are transferred according to the mandate specified by the originating sponsor
@@ -63,24 +67,25 @@ contract Tribunal is BlockNumberish, ITribunal {
     using DomainLib for bytes32;
 
     // ======== Constants ========
-    /// @notice keccak256("_REENTRANCY_GUARD_SLOT")
-    bytes32 private constant _REENTRANCY_GUARD_SLOT =
-        0x929eee149b4bd21268e1321c4622803b452e74fd69be78111fba0332fa0fd4c0;
+    /// @notice The Compact contract instance used for depositing into resource
+    /// locks, registering compacts utilizing those locks, and processing claims
+    /// on compacts.
+    ITheCompact public constant THE_COMPACT =
+        ITheCompact(0x00000000000000171ede64904551eeDF3C6C9788);
 
     /// @notice Base scaling factor (1e18).
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
+
+    /// @notice keccak256("_REENTRANCY_GUARD_SLOT")
+    bytes32 private constant _REENTRANCY_GUARD_SLOT =
+        0x929eee149b4bd21268e1321c4622803b452e74fd69be78111fba0332fa0fd4c0;
 
     bytes32 private constant _EMPTY_HASH =
         0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470;
 
     uint256 private constant _ADDRESS_BITS = 0xa0;
 
-    /// @notice The Compact contract instance used for processing claims against resource locks.
-    ITheCompactClaims public constant THE_COMPACT =
-        ITheCompactClaims(0x00000000000000171ede64904551eeDF3C6C9788);
-
     // ======== Immutables ========
-
     // Chain ID at deployment, used for triggering EIP-712 domain separator updates.
     uint256 private immutable _INITIAL_CHAIN_ID;
 
@@ -102,7 +107,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 mstore(0, 0x8beb9d16)
                 revert(0x1c, 0x04)
             }
-            tstore(_REENTRANCY_GUARD_SLOT, 1)
+            tstore(_REENTRANCY_GUARD_SLOT, caller())
         }
         _;
         assembly ("memory-safe") {
@@ -210,7 +215,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function fillAndClaim(
+    function claimAndFill(
         BatchClaim calldata claim,
         FillParameters calldata mandate,
         address adjuster,
@@ -230,9 +235,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        fillBlock = _validateFillBlock(fillBlock);
-
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _claimAndFill(
+        return _claimAndFill(
             claim.compact,
             claim.sponsorSignature,
             claim.allocatorSignature,
@@ -241,11 +244,9 @@ contract Tribunal is BlockNumberish, ITribunal {
             adjustment,
             adjustmentAuthorization,
             claimant,
-            fillBlock,
+            _validateFillBlock(fillBlock),
             fillHashes
         );
-
-        return (claimHash, mandateHash, fillAmounts, claimAmounts);
     }
 
     /// @inheritdoc ITribunal
@@ -347,16 +348,14 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // An empty mandateHash indicates a deposit without a registration.
         if (mandateHash == bytes32(0)) {
-            ITheCompact(address(THE_COMPACT))
-            .batchDeposit{value: callValue}(idsAndAmounts, recipient);
+            THE_COMPACT.batchDeposit{value: callValue}(idsAndAmounts, recipient);
             return bytes32(0);
         }
 
         // An empty nonce indicates an onchain allocator; wrap registration in prepare & execute hooks.
         if (compact.nonce == 0) {
             // Do an on chain allocation if no nonce is provided
-            (, address allocator,,,) =
-                ITheCompact(address(THE_COMPACT)).getLockDetails(idsAndAmounts[0][0]);
+            (, address allocator,,,) = THE_COMPACT.getLockDetails(idsAndAmounts[0][0]);
 
             // Prepare the allocation with the allocator
             (uint256 nonce) = IOnChainAllocation(allocator)
@@ -371,8 +370,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 );
 
             // deposit and register the tokens
-            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT))
-            .batchDepositAndRegisterFor{
+            (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -397,8 +395,7 @@ contract Tribunal is BlockNumberish, ITribunal {
                 );
         } else {
             // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = ITheCompact(address(THE_COMPACT))
-            .batchDepositAndRegisterFor{
+            (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
                 value: callValue
             }(
                 compact.sponsor,
@@ -462,6 +459,78 @@ contract Tribunal is BlockNumberish, ITribunal {
         returns (uint256 scalingFactor)
     {
         return _getClaimReductionScalingFactor(claimHash);
+    }
+
+    /// @inheritdoc ITribunal
+    function getDispositionDetails(bytes32[] calldata claimHashes)
+        external
+        view
+        returns (DispositionDetails[] memory details)
+    {
+        details = new DispositionDetails[](claimHashes.length);
+        for (uint256 i = 0; i < claimHashes.length; i++) {
+            bytes32 claimHash = claimHashes[i];
+            details[i] = DispositionDetails({
+                claimant: _dispositions[claimHash],
+                scalingFactor: _getClaimReductionScalingFactor(claimHash)
+            });
+        }
+
+        return details;
+    }
+
+    /**
+     * @notice External view function for reading a value from persistent storage.
+     * @param slot The storage slot to read from.
+     * @return The value stored in the specified persistent storage slot.
+     */
+    function extsload(bytes32 slot) external view returns (bytes32) {
+        assembly ("memory-safe") {
+            mstore(0, sload(slot))
+            return(0, 0x20)
+        }
+    }
+
+    /**
+     * @notice External view function for reading multiple values from persistent storage.
+     * @param slots An array of storage slots to read from.
+     * @return An array of values stored in the specified persistent storage slots.
+     */
+    function extsload(bytes32[] calldata slots) external view returns (bytes32[] memory) {
+        assembly ("memory-safe") {
+            let memptr := mload(0x40)
+            let start := memptr
+            // For abi encoding the response - the array will be found at 0x20.
+            mstore(memptr, 0x20)
+            // Next, store the length of the return array.
+            mstore(add(memptr, 0x20), slots.length)
+            // Update memptr to the first location to hold an array entry.
+            memptr := add(memptr, 0x40)
+            // A left bit-shift of 5 is equivalent to multiplying by 32 but costs less gas.
+            let end := add(memptr, shl(5, slots.length))
+            let calldataptr := slots.offset
+            for {} 1 {} {
+                mstore(memptr, sload(calldataload(calldataptr)))
+                memptr := add(memptr, 0x20)
+                if iszero(lt(memptr, end)) { break }
+                calldataptr := add(calldataptr, 0x20)
+            }
+            return(start, sub(end, start))
+        }
+    }
+
+    /**
+     * @notice Returns the address that initiated the current protected call sequence.
+     * @dev Reads from transient storage to expose the reentrancy guard state. This is useful
+     * for determining if execution is currently within a nonReentrant context and for
+     * verifying the origination point of the current call.
+     * @return lockHolder The address of the original caller when executing within a
+     * nonReentrant function, or address(0) if the reentrancy guard is not currently active.
+     */
+    function reentrancyGuardStatus() external view returns (address lockHolder) {
+        assembly ("memory-safe") {
+            lockHolder := tload(_REENTRANCY_GUARD_SLOT)
+        }
     }
 
     // ======== External Pure Functions ========
@@ -1081,7 +1150,16 @@ contract Tribunal is BlockNumberish, ITribunal {
                 component.portions[0].amount = claimAmounts[i];
                 claim.claims[i] = component;
             }
-            claimHash = THE_COMPACT.batchClaim(claim);
+
+            // Relay the claim request to the indicated arbiter unless
+            // Tribunal *is* the arbiter; if so, process the claim directly
+            // on The Compact.
+            address target = compact.arbiter;
+            if (target == address(this)) {
+                target = address(THE_COMPACT);
+            }
+
+            claimHash = ITheCompactClaims(target).batchClaim(claim);
         }
 
         // Do a callback to the sender with all fill requirements.

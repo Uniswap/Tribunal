@@ -9,9 +9,9 @@ import {
     FillParameters,
     FillComponent,
     Adjustment,
-    RecipientCallback
+    RecipientCallback,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
-import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
@@ -135,7 +135,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             validityConditions: bytes32(uint256(uint160(filler)))
         });
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
@@ -226,7 +226,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             validityConditions: bytes32(uint256(uint160(filler)))
         });
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 
@@ -309,7 +309,7 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             validityConditions: bytes32(uint256(uint160(filler)))
         });
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: compact, sponsorSignature: new bytes(0), allocatorSignature: new bytes(0)
         });
 

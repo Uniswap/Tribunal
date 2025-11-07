@@ -17,7 +17,8 @@ import {
     FillComponent,
     FillRequirement,
     Adjustment,
-    RecipientCallback
+    RecipientCallback,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
 
@@ -193,7 +194,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -254,7 +255,7 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
         // The first fill should succeed despite the reentrancy attempt
         // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         vm.prank(address(filler));
-        tribunal.fillAndClaim{
+        tribunal.claimAndFill{
             value: 1 ether
         }(
             claim,

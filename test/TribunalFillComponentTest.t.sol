@@ -18,7 +18,8 @@ import {
     FillRequirement,
     Adjustment,
     RecipientCallback,
-    FillRecipient
+    FillRecipient,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {
     BatchCompact,
@@ -255,7 +256,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -303,7 +304,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         vm.prank(address(filler));
-        tribunal.fillAndClaim(
+        tribunal.claimAndFill(
             claim,
             fill,
             adjuster,
@@ -388,7 +389,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -426,7 +427,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
-        (,, uint256[] memory fillAmounts,) = tribunal.fillAndClaim(
+        (,, uint256[] memory fillAmounts,) = tribunal.claimAndFill(
             claim,
             fill,
             adjuster,
@@ -528,7 +529,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -559,7 +560,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         uint256 recipientBalanceBefore = token1.balanceOf(recipient);
 
         vm.prank(address(filler));
-        tribunal.fillAndClaim(
+        tribunal.claimAndFill(
             claim,
             fill,
             adjuster,
@@ -650,7 +651,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -688,7 +689,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
-        (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.fillAndClaim(
+        (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.claimAndFill(
             claim,
             fill,
             adjuster,
@@ -819,7 +820,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -851,7 +852,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         MockRecipientCallback mockCallback = MockRecipientCallback(recipient1);
 
         vm.prank(address(filler));
-        tribunal.fillAndClaim(
+        tribunal.claimAndFill(
             claim,
             fill,
             adjuster,
