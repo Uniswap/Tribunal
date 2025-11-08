@@ -110,9 +110,23 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         }
 
         // Get the claim, fill, and fillHashes encoded as bytes arrays with bounds checks from the originData.
-        bytes calldata encodedClaim = LibBytes.dynamicStructInCalldata(originData, 0x00);
-        bytes calldata encodedFill = LibBytes.dynamicStructInCalldata(originData, 0x20);
-        bytes calldata encodedFillHashes = LibBytes.bytesInCalldata(originData, 0x40);
+        {
+            bytes calldata encodedClaim = LibBytes.dynamicStructInCalldata(originData, 0x00);
+            bytes calldata encodedFill = LibBytes.dynamicStructInCalldata(originData, 0x20);
+            assembly ("memory-safe") {
+                claim := encodedClaim.offset
+                mandate := encodedFill.offset
+            }
+        }
+
+        {
+            bytes calldata encodedFillHashes = LibBytes.bytesInCalldata(originData, 0x40);
+            assembly ("memory-safe") {
+                // originData
+                fillHashes.offset := encodedFillHashes.offset
+                fillHashes.length := encodedFillHashes.length
+            }
+        }
 
         // Get the adjustment, claimant and fillBlock encoded as bytes arrays with bounds checks from the fillerData.
         bytes calldata encodedAdjustment = LibBytes.dynamicStructInCalldata(fillerData, 0x00);
@@ -122,12 +136,6 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
         // Extract static structs and other static variables directly.
         // Note: This doesn't sanitize struct elements; that should happen downstream.
         assembly ("memory-safe") {
-            // originData
-            claim := encodedClaim.offset
-            mandate := encodedFill.offset
-            fillHashes.offset := encodedFillHashes.offset
-            fillHashes.length := encodedFillHashes.length
-
             // fillerData
             adjustment := encodedAdjustment.offset
             claimant := encodedClaimant
