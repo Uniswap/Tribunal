@@ -157,48 +157,39 @@ contract TribunalE2ETest is DeployTheCompact {
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
     uint256 constant FILL_AMOUNT = 50 ether;
 
-    function setUp() public {
-        // Setup test accounts
-        sponsorKey = 0x1;
-        sponsor = vm.addr(sponsorKey);
-        adjusterKey = 0x2;
-        adjuster = vm.addr(adjusterKey);
-        allocatorKey = 0x3;
-        allocator = vm.addr(allocatorKey);
-        filler = address(0x4);
-        recipient = address(0x5);
-
-        // Take a snapshot of initial state
-        uint256 initialState = vm.snapshot();
-
-        // Deploy on Chain 1
+    function _setupChain1(uint256 initialState)
+        internal
+        returns (address, address, address, uint256, uint96, bytes12)
+    {
         vm.chainId(CHAIN_1);
         TheCompact theCompactChain1 = deployTheCompact();
         Tribunal tribunalChain1Temp = new Tribunal{salt: 0}();
         MockERC20 tokenChain1Temp = new MockERC20();
 
-        // Transfer tokens to sponsor (MockERC20 mints to deployer)
         vm.prank(address(this));
         tokenChain1Temp.transfer(sponsor, INITIAL_BALANCE);
 
-        // Register allocator on Chain 1
         vm.prank(allocator);
         uint96 allocatorIdChain1Temp = theCompactChain1.__registerAllocator(allocator, "");
-
-        // Construct lock tag for Chain 1: scope (2 bytes) + resetPeriod (4 bytes) + allocatorId (6 bytes) = 12 bytes
-        // Using scope 0, resetPeriod 0, and the allocatorId we just registered
         bytes12 lockTagChain1Temp = bytes12(uint96(allocatorIdChain1Temp));
 
-        // Store Chain 1 addresses before reverting (as raw addresses, not contract types)
-        address theCompactChain1Addr = address(theCompactChain1);
-        address tribunalChain1Addr = address(tribunalChain1Temp);
-        address tokenChain1Addr = address(tokenChain1Temp);
-
-        // Take snapshot of chain 1
         uint256 chain1SnapshotId = vm.snapshot();
         vm.revertTo(initialState);
 
-        // Deploy on Chain 2
+        return (
+            address(theCompactChain1),
+            address(tribunalChain1Temp),
+            address(tokenChain1Temp),
+            chain1SnapshotId,
+            allocatorIdChain1Temp,
+            lockTagChain1Temp
+        );
+    }
+
+    function _setupChain2(address theCompactChain1Addr)
+        internal
+        returns (address, address, address, address, uint256, uint96, bytes12)
+    {
         vm.chainId(CHAIN_2);
 
         TheCompact theCompactChain2 = deployTheCompact();
@@ -209,18 +200,12 @@ contract TribunalE2ETest is DeployTheCompact {
             salt: 0
         }(payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp));
 
-        // Grant bridge role to the bridge and to this test contract (for setup)
         bridgedTokenChain2Temp.grantBridgeRole(address(bridgeTemp));
         bridgedTokenChain2Temp.grantBridgeRole(address(this));
-
-        // Give filler some tokens on chain 2
         bridgedTokenChain2Temp.bridgeMint(filler, INITIAL_BALANCE);
 
-        // Register allocator on Chain 2 (might get different ID since it's a separate deployment)
         vm.prank(allocator);
         uint96 allocatorIdChain2Temp = theCompactChain2.__registerAllocator(allocator, "");
-
-        // Construct lock tag for Chain 2
         bytes12 lockTagChain2Temp = bytes12(uint96(allocatorIdChain2Temp));
 
         require(
@@ -228,16 +213,50 @@ contract TribunalE2ETest is DeployTheCompact {
             "deployment address for The Compact differs across chains"
         );
 
-        // Store Chain 2 addresses before taking snapshot (as raw addresses)
-        address tribunalChain2Addr = address(tribunalChain2Temp);
-        address bridgedTokenChain2Addr = address(bridgedTokenChain2Temp);
-        address recipientCallbackAddr = address(recipientCallbackTemp);
-        address bridgeAddr = address(bridgeTemp);
-
-        // Take snapshot of chain 2
         uint256 chain2SnapshotId = vm.snapshot();
 
-        // Store all addresses and data in storage arrays
+        return (
+            address(tribunalChain2Temp),
+            address(bridgedTokenChain2Temp),
+            address(recipientCallbackTemp),
+            address(bridgeTemp),
+            chain2SnapshotId,
+            allocatorIdChain2Temp,
+            lockTagChain2Temp
+        );
+    }
+
+    function setUp() public {
+        sponsorKey = 0x1;
+        sponsor = vm.addr(sponsorKey);
+        adjusterKey = 0x2;
+        adjuster = vm.addr(adjusterKey);
+        allocatorKey = 0x3;
+        allocator = vm.addr(allocatorKey);
+        filler = address(0x4);
+        recipient = address(0x5);
+
+        uint256 initialState = vm.snapshot();
+
+        (
+            address theCompactChain1Addr,
+            address tribunalChain1Addr,
+            address tokenChain1Addr,
+            uint256 chain1SnapshotId,
+            uint96 allocatorIdChain1,
+            bytes12 lockTagChain1
+        ) = _setupChain1(initialState);
+
+        (
+            address tribunalChain2Addr,
+            address bridgedTokenChain2Addr,
+            address recipientCallbackAddr,
+            address bridgeAddr,
+            uint256 chain2SnapshotId,
+            uint96 allocatorIdChain2,
+            bytes12 lockTagChain2
+        ) = _setupChain2(theCompactChain1Addr);
+
         contractAddresses = new address[](7);
         contractAddresses[COMPACT_ADDR] = theCompactChain1Addr;
         contractAddresses[TRIBUNAL_CHAIN1_ADDR] = tribunalChain1Addr;
@@ -252,12 +271,12 @@ contract TribunalE2ETest is DeployTheCompact {
         snapshots[1] = chain2SnapshotId;
 
         allocatorIds = new uint96[](2);
-        allocatorIds[0] = allocatorIdChain1Temp;
-        allocatorIds[1] = allocatorIdChain2Temp;
+        allocatorIds[0] = allocatorIdChain1;
+        allocatorIds[1] = allocatorIdChain2;
 
         lockTags = new bytes12[](2);
-        lockTags[0] = lockTagChain1Temp;
-        lockTags[1] = lockTagChain2Temp;
+        lockTags[0] = lockTagChain1;
+        lockTags[1] = lockTagChain2;
     }
 
     function switchToChain1(uint256 chain1Snapshot, uint256 chain2Snapshot)
