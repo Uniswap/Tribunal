@@ -439,18 +439,14 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         fillHashes[0] = tribunal.deriveFillHash(fill);
     }
 
-    /// @notice Test that one fill component applies scaling (priority fee + price curve) while another doesn't
-    function test_MixedScalingAndNonScalingComponents_ExactIn_WithPriorityFee() public {
-        address recipient1 = address(0xBEEF);
-        address recipient2 = address(0xCAFE);
-
-        (
-            FillParameters memory fill,
-            BatchClaim memory claim,
-            bytes32[] memory fillHashes,
-            uint256 targetBlock
-        ) = _setupMixedScalingTest(recipient1, recipient2);
-
+    function _executeMixedScalingFill(
+        FillParameters memory fill,
+        BatchClaim memory claim,
+        bytes32[] memory fillHashes,
+        uint256 targetBlock,
+        address recipient1,
+        address recipient2
+    ) internal {
         // Create mandate with the actual fill
         FillParameters[] memory fills = new FillParameters[](1);
         fills[0] = fill;
@@ -502,20 +498,30 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         assertEq(token1.balanceOf(recipient2), 50e18, "Recipient 2 should receive unscaled amount");
     }
 
-    /// @notice Test that providing the same token + recipient pair twice still works
-    /// and does both transfers (eg that a single fill isn't somehow double-counted)
-    function test_DuplicateTokenRecipientPairDoesDoubleTransfer() public {
-        address recipient = address(0xBEEF);
+    /// @notice Test that one fill component applies scaling (priority fee + price curve) while another doesn't
+    function test_MixedScalingAndNonScalingComponents_ExactIn_WithPriorityFee() public {
+        address recipient1 = address(0xBEEF);
+        address recipient2 = address(0xCAFE);
 
-        // Deposit tokens to TheCompact for the sponsor
-        uint256 depositAmount = 300e18;
-        token1.transfer(sponsor, depositAmount);
+        (
+            FillParameters memory fill,
+            BatchClaim memory claim,
+            bytes32[] memory fillHashes,
+            uint256 targetBlock
+        ) = _setupMixedScalingTest(recipient1, recipient2);
 
+        _executeMixedScalingFill(fill, claim, fillHashes, targetBlock, recipient1, recipient2);
+    }
+
+    function _setupDuplicateRecipientTest(address recipient)
+        internal
+        returns (FillParameters memory fill, BatchClaim memory claim, bytes32[] memory fillHashes)
+    {
+        // Deposit tokens
+        token1.transfer(sponsor, 300e18);
         vm.startPrank(sponsor);
-        token1.approve(address(compactContract), depositAmount);
-        compactContract.depositERC20(
-            address(token1), bytes12(uint96(allocatorId)), depositAmount, sponsor
-        );
+        token1.approve(address(compactContract), 300e18);
+        compactContract.depositERC20(address(token1), bytes12(uint96(allocatorId)), 300e18, sponsor);
         vm.stopPrank();
 
         // Create three components with the SAME token and recipient
@@ -529,17 +535,17 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         components[1] = FillComponent({
             fillToken: address(token1),
             minimumFillAmount: 75e18,
-            recipient: recipient, // Same recipient
+            recipient: recipient,
             applyScaling: false
         });
         components[2] = FillComponent({
             fillToken: address(token1),
             minimumFillAmount: 50e18,
-            recipient: recipient, // Same recipient again
+            recipient: recipient,
             applyScaling: false
         });
 
-        FillParameters memory fill = FillParameters({
+        fill = FillParameters({
             chainId: block.chainid,
             tribunal: address(tribunal),
             expires: uint256(block.timestamp + 1),
@@ -560,18 +566,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
 
-        bytes memory sponsorSig = _generateSponsorSignature(
-            BatchCompact({
-                arbiter: address(tribunal),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            mandateHash
-        );
-
-        BatchClaim memory claim = BatchClaim({
+        claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal),
                 sponsor: sponsor,
@@ -579,25 +574,40 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
                 expires: block.timestamp + 1 hours,
                 commitments: commitments
             }),
-            sponsorSignature: sponsorSig,
+            sponsorSignature: _generateSponsorSignature(
+                BatchCompact({
+                    arbiter: address(tribunal),
+                    sponsor: sponsor,
+                    nonce: 0,
+                    expires: block.timestamp + 1 hours,
+                    commitments: commitments
+                }),
+                mandateHash
+            ),
             allocatorSignature: new bytes(0)
         });
 
-        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
+    }
 
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+    /// @notice Test that providing the same token + recipient pair twice still works
+    /// and does both transfers (eg that a single fill isn't somehow double-counted)
+    function test_DuplicateTokenRecipientPairDoesDoubleTransfer() public {
+        address recipient = address(0xBEEF);
 
-        Adjustment memory adjustmentForSig = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: ""
-        });
+        (FillParameters memory fill, BatchClaim memory claim, bytes32[] memory fillHashes) =
+            _setupDuplicateRecipientTest(recipient);
 
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+        // Create mandate with the actual fill
+        bytes32 claimHash;
+        {
+            FillParameters[] memory fills = new FillParameters[](1);
+            fills[0] = fill;
+            Mandate memory mandate = Mandate({adjuster: adjuster, fills: fills});
+            bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+            claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+        }
 
         Adjustment memory adjustment = Adjustment({
             adjuster: adjuster,
@@ -605,7 +615,17 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             targetBlock: vm.getBlockNumber(),
             supplementalPriceCurve: new uint256[](0),
             validityConditions: bytes32(0),
-            adjustmentAuthorization: adjustmentSignature
+            adjustmentAuthorization: _signAdjustment(
+                claimHash,
+                Adjustment({
+                    adjuster: adjuster,
+                    fillIndex: 0,
+                    targetBlock: vm.getBlockNumber(),
+                    supplementalPriceCurve: new uint256[](0),
+                    validityConditions: bytes32(0),
+                    adjustmentAuthorization: ""
+                })
+            )
         });
 
         vm.prank(address(filler));
@@ -619,9 +639,8 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         );
 
         // Verify that ALL THREE transfers occurred (total = 100 + 75 + 50 = 225)
-        uint256 recipientBalanceAfter = token1.balanceOf(recipient);
         assertEq(
-            recipientBalanceAfter - recipientBalanceBefore,
+            token1.balanceOf(recipient) - recipientBalanceBefore,
             225e18,
             "Recipient should receive sum of all three components"
         );
