@@ -213,14 +213,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         return _claimAndFill(
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandate,
-            adjustment,
-            claimant,
-            _validateFillBlock(fillBlock),
-            fillHashes
+            claim, mandate, adjustment, claimant, _validateFillBlock(fillBlock), fillHashes
         );
     }
 
@@ -798,9 +791,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /**
      * @notice Internal implementation of same-chain fill with a preceding claim execution.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
+     * @param claim The compact parameters including signatures.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param claimant The recipient of claimed tokens on the claim chain.
@@ -812,9 +803,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function _claimAndFill(
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
+        BatchClaim calldata claim,
         FillParameters calldata mandate,
         Adjustment calldata adjustment,
         bytes32 claimant,
@@ -829,6 +818,10 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
+        BatchCompact calldata compact = claim.compact;
+        bytes calldata sponsorSignature = claim.sponsorSignature;
+        bytes calldata allocatorSignature = claim.allocatorSignature;
+
         // Validate fill conditions and derive mandate hash.
         mandateHash = _validateAndDeriveMandateHash(
             mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
