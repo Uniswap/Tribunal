@@ -733,12 +733,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 scalingMultiplier;
         (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
             compact.commitments,
-            mandate.components,
+            mandate,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
+            fillBlock
         );
 
         // Derive and check claim hash.
@@ -831,12 +829,10 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 scalingMultiplier;
         (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
             compact.commitments,
-            mandate.components,
+            mandate,
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
             adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
+            fillBlock
         );
 
         // Execute the claim against The Compact and perform callback to filler.
@@ -1273,24 +1269,20 @@ contract Tribunal is BlockNumberish, ITribunal {
     /**
      * @notice Internal function that derives amounts from components and returns the scaling multiplier.
      * @param maximumClaimAmounts The maximum amounts to claim.
-     * @param components The fill components.
+     * @param mandate The fill parameters containing components and scaling info.
      * @param priceCurve The price curve to apply.
      * @param targetBlock The target block number.
      * @param fillBlock The fill block number.
-     * @param baselinePriorityFee The baseline priority fee.
-     * @param scalingFactor The scaling factor.
      * @return fillAmounts The derived fill amounts for each component.
      * @return claimAmounts The derived claim amounts.
      * @return scalingMultiplier The calculated scaling multiplier.
      */
     function _deriveAmountsFromComponentsWithScaling(
         Lock[] calldata maximumClaimAmounts,
-        FillComponent[] calldata components,
+        FillParameters calldata mandate,
         uint256[] memory priceCurve,
         uint256 targetBlock,
-        uint256 fillBlock,
-        uint256 baselinePriorityFee,
-        uint256 scalingFactor
+        uint256 fillBlock
     )
         internal
         view
@@ -1300,6 +1292,10 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256 scalingMultiplier
         )
     {
+        FillComponent[] calldata components = mandate.components;
+        uint256 baselinePriorityFee = mandate.baselinePriorityFee;
+        uint256 scalingFactor = mandate.scalingFactor;
+
         fillAmounts = new uint256[](components.length);
 
         // Calculate the common scaling values
