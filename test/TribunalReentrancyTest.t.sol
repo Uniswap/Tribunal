@@ -25,6 +25,15 @@ import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Typ
 contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
     using FixedPointMathLib for uint256;
 
+    struct ClaimAndFillArgs {
+        BatchClaim claim;
+        FillParameters fill;
+        Adjustment adjustment;
+        bytes32[] fillHashes;
+        bytes32 claimant;
+        uint256 value;
+    }
+
     Tribunal public tribunal;
     TheCompact public compactContract;
     address sponsor;
@@ -152,120 +161,132 @@ contract TribunalReentrancyTest is DeployTheCompact, ITribunalCallback {
 
         ReentrantReceiver reentrantReceiver = new ReentrantReceiver{value: 10 ether}(tribunal);
 
-        FillComponent[] memory components = new FillComponent[](1);
-        components[0] = FillComponent({
-            fillToken: address(0),
-            minimumFillAmount: 1 ether,
-            recipient: address(reentrantReceiver),
-            applyScaling: false
-        });
+        ClaimAndFillArgs memory args;
+        args.claimant = bytes32(uint256(uint160(address(filler))));
+        args.value = 0;
 
-        FillParameters memory fill = FillParameters({
-            chainId: block.chainid,
-            tribunal: address(tribunal),
-            expires: uint256(block.timestamp + 1),
-            components: components,
-            baselinePriorityFee: 0,
-            scalingFactor: 1e18, // Use neutral scaling factor
-            priceCurve: emptyPriceCurve,
-            recipientCallback: new RecipientCallback[](0),
-            salt: bytes32(uint256(1))
-        });
-
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
-        mandate.fills[0] = fill;
-
-        Lock[] memory commitments = new Lock[](1);
-        commitments[0] =
-            Lock({lockTag: bytes12(uint96(allocatorId)), token: address(0), amount: 1 ether});
-
-        // Generate the mandate hash
-        bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
-
-        // Generate sponsor signature for the BatchCompact with mandate witness
-        bytes memory sponsorSig = _generateSponsorSignature(
-            BatchCompact({
-                arbiter: address(tribunal), // TheCompact will use msg.sender which is Tribunal
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            mandateHash
-        );
-
-        BatchClaim memory claim = BatchClaim({
-            compact: BatchCompact({
-                arbiter: address(tribunal), // Must match what's signed
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            sponsorSignature: sponsorSig,
-            allocatorSignature: new bytes(0)
-        });
-
-        bytes32[] memory fillHashes = new bytes32[](1);
-        fillHashes[0] = tribunal.deriveFillHash(fill);
-
-        // Derive the actual claim hash
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-
-        Adjustment memory adjustment = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: "" // Will be set below
-        });
-
-        // Sign the adjustment
-        bytes32 adjustmentHash = keccak256(
-            abi.encode(
-                keccak256(
-                    "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
-                ),
-                claimHash,
-                adjustment.fillIndex,
-                adjustment.targetBlock,
-                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
-                adjustment.validityConditions
-            )
-        );
-
-        bytes32 domainSeparator = keccak256(
-            abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
-                keccak256("Tribunal"),
-                keccak256("1"),
-                block.chainid,
-                address(tribunal)
-            )
-        );
-
-        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
-        adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
-
+        uint256 minimumFillAmount;
         uint256 initialRecipientBalance = address(reentrantReceiver).balance;
         uint256 initialFillerBalance = address(filler).balance;
+
+        // Block 1: Create fill parameters
+        {
+            FillComponent[] memory components = new FillComponent[](1);
+            components[0] = FillComponent({
+                fillToken: address(0),
+                minimumFillAmount: 1 ether,
+                recipient: address(reentrantReceiver),
+                applyScaling: false
+            });
+            minimumFillAmount = components[0].minimumFillAmount;
+
+            args.fill = FillParameters({
+                chainId: block.chainid,
+                tribunal: address(tribunal),
+                expires: uint256(block.timestamp + 1),
+                components: components,
+                baselinePriorityFee: 0,
+                scalingFactor: 1e18,
+                priceCurve: emptyPriceCurve,
+                recipientCallback: new RecipientCallback[](0),
+                salt: bytes32(uint256(1))
+            });
+        }
+
+        // Block 2: Create claim and fillHashes
+        {
+            Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
+            mandate.fills[0] = args.fill;
+
+            Lock[] memory commitments = new Lock[](1);
+            commitments[0] =
+                Lock({lockTag: bytes12(uint96(allocatorId)), token: address(0), amount: 1 ether});
+
+            bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+
+            bytes memory sponsorSig = _generateSponsorSignature(
+                BatchCompact({
+                    arbiter: address(tribunal),
+                    sponsor: sponsor,
+                    nonce: 0,
+                    expires: block.timestamp + 1 hours,
+                    commitments: commitments
+                }),
+                mandateHash
+            );
+
+            args.claim = BatchClaim({
+                compact: BatchCompact({
+                    arbiter: address(tribunal),
+                    sponsor: sponsor,
+                    nonce: 0,
+                    expires: block.timestamp + 1 hours,
+                    commitments: commitments
+                }),
+                sponsorSignature: sponsorSig,
+                allocatorSignature: new bytes(0)
+            });
+
+            args.fillHashes = new bytes32[](1);
+            args.fillHashes[0] = tribunal.deriveFillHash(args.fill);
+        }
+
+        // Block 3: Create and sign adjustment
+        {
+            Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
+            mandate.fills[0] = args.fill;
+            bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+            bytes32 claimHash = tribunal.deriveClaimHash(args.claim.compact, mandateHash);
+
+            args.adjustment = Adjustment({
+                adjuster: adjuster,
+                fillIndex: 0,
+                targetBlock: vm.getBlockNumber(),
+                supplementalPriceCurve: new uint256[](0),
+                validityConditions: bytes32(0),
+                adjustmentAuthorization: ""
+            });
+
+            bytes32 adjustmentHash = keccak256(
+                abi.encode(
+                    keccak256(
+                        "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
+                    ),
+                    claimHash,
+                    args.adjustment.fillIndex,
+                    args.adjustment.targetBlock,
+                    keccak256(abi.encodePacked(args.adjustment.supplementalPriceCurve)),
+                    args.adjustment.validityConditions
+                )
+            );
+
+            bytes32 domainSeparator = keccak256(
+                abi.encode(
+                    keccak256(
+                        "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                    ),
+                    keccak256("Tribunal"),
+                    keccak256("1"),
+                    block.chainid,
+                    address(tribunal)
+                )
+            );
+
+            bytes32 digest =
+                keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+            (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+            args.adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
+        }
 
         // The first fill should succeed despite the reentrancy attempt
         // The ReentrantReceiver will try to reenter but will be blocked by the reentrancy guard
         vm.prank(address(filler));
         tribunal.claimAndFill{
             value: 1 ether
-        }(claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0);
+        }(args.claim, args.fill, args.adjustment, args.fillHashes, args.claimant, args.value);
 
         // Verify that the first fill succeeded and the recipient received the funds
-        assertEq(
-            address(reentrantReceiver).balance,
-            initialRecipientBalance + components[0].minimumFillAmount
-        );
-        assertEq(address(filler).balance, initialFillerBalance); // Filler balance unchanged (paid 1 ether, received 1 ether from TheCompact)
+        assertEq(address(reentrantReceiver).balance, initialRecipientBalance + minimumFillAmount);
+        assertEq(address(filler).balance, initialFillerBalance);
     }
 }

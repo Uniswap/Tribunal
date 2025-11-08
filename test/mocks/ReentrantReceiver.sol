@@ -18,41 +18,36 @@ contract ReentrantReceiver {
 
     Tribunal private immutable _TRIBUNAL;
     BatchClaim private _claim;
-    Mandate private _mandate;
+    FillParameters private _fillParams;
 
     constructor(Tribunal _tribunal) payable {
         _TRIBUNAL = _tribunal;
-        _claim = BatchClaim({
-            compact: BatchCompact({
-                arbiter: address(this),
-                sponsor: address(this),
-                nonce: 0,
-                expires: type(uint32).max,
-                commitments: new Lock[](0)
-            }),
-            sponsorSignature: new bytes(0),
-            allocatorSignature: new bytes(0)
-        });
-        _mandate = Mandate({adjuster: address(this), fills: new FillParameters[](1)});
-        FillComponent[] memory components = new FillComponent[](1);
-        components[0] = FillComponent({
-            fillToken: address(0),
-            minimumFillAmount: 0,
-            recipient: address(this),
-            applyScaling: true
-        });
 
-        _mandate.fills[0] = FillParameters({
-            chainId: block.chainid,
-            tribunal: address(_TRIBUNAL),
-            expires: type(uint32).max,
-            components: components,
-            baselinePriorityFee: 0,
-            scalingFactor: 1e18,
-            priceCurve: new uint256[](0),
-            recipientCallback: new RecipientCallback[](0),
-            salt: bytes32(uint256(1))
-        });
+        // Initialize storage variables field by field to avoid memory-to-storage copy issues
+        _claim.compact.arbiter = address(this);
+        _claim.compact.sponsor = address(this);
+        _claim.compact.nonce = 0;
+        _claim.compact.expires = type(uint32).max;
+        // commitments array is already empty by default
+
+        // Initialize _fillParams fields directly
+        _fillParams.chainId = block.chainid;
+        _fillParams.tribunal = address(_TRIBUNAL);
+        _fillParams.expires = type(uint32).max;
+        _fillParams.baselinePriorityFee = 0;
+        _fillParams.scalingFactor = 1e18;
+        _fillParams.salt = bytes32(uint256(1));
+
+        // Initialize components array by pushing to it
+        _fillParams.components
+            .push(
+                FillComponent({
+                    fillToken: address(0),
+                    minimumFillAmount: 0,
+                    recipient: address(this),
+                    applyScaling: true
+                })
+            );
     }
 
     receive() external payable {
@@ -66,12 +61,12 @@ contract ReentrantReceiver {
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
-        fillHashes[0] = _TRIBUNAL.deriveFillHash(_mandate.fills[0]);
+        fillHashes[0] = _TRIBUNAL.deriveFillHash(_fillParams);
 
         uint256 balanceBefore = address(this).balance;
         try _TRIBUNAL.fill(
             _claim.compact,
-            _mandate.fills[0],
+            _fillParams,
             adjustment,
             fillHashes,
             bytes32(uint256(uint160(address(this)))),
@@ -85,7 +80,7 @@ contract ReentrantReceiver {
     }
 
     function getMandate() public view returns (FillParameters memory) {
-        return _mandate.fills[0];
+        return _fillParams;
     }
 
     function getClaim() public view returns (BatchClaim memory) {
