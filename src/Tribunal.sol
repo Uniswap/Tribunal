@@ -819,20 +819,22 @@ contract Tribunal is BlockNumberish, ITribunal {
             mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
         );
 
-        // Derive fill and claim amounts.
-        uint256 scalingMultiplier;
-        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            claim.compact.commitments, mandate, adjustment, fillBlock
-        );
+        {
+            // Derive fill and claim amounts.
+            uint256 scalingMultiplier;
+            (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
+                claim.compact.commitments, mandate, adjustment, fillBlock
+            );
 
-        // Execute the claim against The Compact and perform callback to filler.
-        claimHash = _processClaimAndCallback(
-            claim, mandate, mandateHash, fillAmounts, claimant, claimAmounts
-        );
+            // Execute the claim against The Compact and perform callback to filler.
+            claimHash = _processClaimAndCallback(
+                claim, mandate, mandateHash, fillAmounts, claimant, claimAmounts
+            );
 
-        // Store the claim reduction scaling factor if claims were reduced
-        if (scalingMultiplier < BASE_SCALING_FACTOR) {
-            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            // Store the claim reduction scaling factor if claims were reduced
+            if (scalingMultiplier < BASE_SCALING_FACTOR) {
+                _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            }
         }
 
         // Verify adjuster authorization.
@@ -1279,80 +1281,30 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 baselinePriorityFee = mandate.baselinePriorityFee;
         uint256 scalingFactor = mandate.scalingFactor;
 
-        fillAmounts = new uint256[](components.length);
-
         // Apply supplemental price curve to mandate price curve
         uint256[] memory priceCurve =
             mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve);
         uint256 targetBlock = adjustment.targetBlock;
 
-        // Calculate the common scaling values
-        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
-        if (targetBlock != 0) {
-            if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(fillBlock, targetBlock);
-            }
-            uint256 blocksPassed;
-            unchecked {
-                blocksPassed = fillBlock - targetBlock;
-            }
-            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
-        } else {
-            if (priceCurve.length != 0) {
-                revert InvalidTargetBlockDesignation();
-            }
-        }
+        // Calculate the current scaling factor from price curve
+        uint256 currentScalingFactor =
+            _calculateCurrentScalingFactor(priceCurve, targetBlock, fillBlock);
 
+        // Validate scaling direction
         if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
             revert PriceCurveLib.InvalidPriceCurveParameters();
         }
 
-        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+        // Calculate scaling multiplier and determine mode
+        bool useExactIn;
+        (scalingMultiplier, useExactIn) =
+            _calculateScalingMultiplier(currentScalingFactor, scalingFactor, baselinePriorityFee);
 
-        // Calculate the scaling multiplier
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
-
-        if (useExactIn) {
-            scalingMultiplier = currentScalingFactor
-                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
-        } else {
-            scalingMultiplier = currentScalingFactor
-                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
-
-            // Sanity check: revert if derived scaling factor is zero
-            if (scalingMultiplier == 0) {
-                revert PriceCurveLib.InvalidPriceCurveParameters();
-            }
-        }
-
-        // Calculate fill amounts for each component
-        for (uint256 i = 0; i < components.length; i++) {
-            if (components[i].applyScaling) {
-                if (useExactIn) {
-                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
-                } else {
-                    fillAmounts[i] = components[i].minimumFillAmount;
-                }
-            } else {
-                // If not applying scaling, use the minimum amount as-is
-                fillAmounts[i] = components[i].minimumFillAmount;
-            }
-        }
+        // Calculate fill amounts
+        fillAmounts = _calculateFillAmounts(components, scalingMultiplier, useExactIn);
 
         // Calculate claim amounts
-        claimAmounts = new uint256[](maximumClaimAmounts.length);
-        if (useExactIn) {
-            // For exact-in, use maximum claim amounts unchanged
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount;
-            }
-        } else {
-            // For exact-out, apply scaling to claim amounts
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
-            }
-        }
+        claimAmounts = _calculateClaimAmounts(maximumClaimAmounts, scalingMultiplier, useExactIn);
 
         return (fillAmounts, claimAmounts, scalingMultiplier);
     }
