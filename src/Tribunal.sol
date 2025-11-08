@@ -690,71 +690,24 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 baselinePriorityFee,
         uint256 scalingFactor
     ) external view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
-        fillAmounts = new uint256[](components.length);
+        // Calculate the current scaling factor from price curve
+        uint256 currentScalingFactor =
+            _calculateCurrentScalingFactor(priceCurve, targetBlock, fillBlock);
 
-        // Calculate the common scaling values
-        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
-        if (targetBlock != 0) {
-            if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(fillBlock, targetBlock);
-            }
-            uint256 blocksPassed;
-            unchecked {
-                blocksPassed = fillBlock - targetBlock;
-            }
-            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
-        } else {
-            if (priceCurve.length != 0) {
-                revert InvalidTargetBlockDesignation();
-            }
-        }
-
+        // Validate scaling direction
         if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
             revert PriceCurveLib.InvalidPriceCurveParameters();
         }
 
-        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+        // Calculate scaling multiplier and determine mode
+        (uint256 scalingMultiplier, bool useExactIn) =
+            _calculateScalingMultiplier(currentScalingFactor, scalingFactor, baselinePriorityFee);
 
-        // Calculate the scaling multiplier
-        uint256 scalingMultiplier;
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
-
-        if (useExactIn) {
-            scalingMultiplier = currentScalingFactor
-                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
-        } else {
-            scalingMultiplier = currentScalingFactor
-                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
-        }
-
-        // Calculate fill amounts for each component
-        for (uint256 i = 0; i < components.length; i++) {
-            if (components[i].applyScaling) {
-                if (useExactIn) {
-                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
-                } else {
-                    fillAmounts[i] = components[i].minimumFillAmount;
-                }
-            } else {
-                // If not applying scaling, use the minimum amount as-is
-                fillAmounts[i] = components[i].minimumFillAmount;
-            }
-        }
+        // Calculate fill amounts
+        fillAmounts = _calculateFillAmounts(components, scalingMultiplier, useExactIn);
 
         // Calculate claim amounts
-        claimAmounts = new uint256[](maximumClaimAmounts.length);
-        if (useExactIn) {
-            // For exact-in, use maximum claim amounts unchanged
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount;
-            }
-        } else {
-            // For exact-out, apply scaling to claim amounts
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
-            }
-        }
+        claimAmounts = _calculateClaimAmounts(maximumClaimAmounts, scalingMultiplier, useExactIn);
 
         return (fillAmounts, claimAmounts);
     }
@@ -1384,6 +1337,87 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
+     * @notice Calculates the scaling multiplier and determines the mode (exact-in or exact-out).
+     * @param currentScalingFactor The current scaling factor from price curve.
+     * @param scalingFactor The scaling factor parameter.
+     * @param baselinePriorityFee The baseline priority fee.
+     * @return scalingMultiplier The calculated scaling multiplier.
+     * @return useExactIn Whether to use exact-in mode.
+     */
+    function _calculateScalingMultiplier(
+        uint256 currentScalingFactor,
+        uint256 scalingFactor,
+        uint256 baselinePriorityFee
+    ) internal view returns (uint256 scalingMultiplier, bool useExactIn) {
+        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+
+        useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
+        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
+
+        if (useExactIn) {
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
+        } else {
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
+        }
+
+        return (scalingMultiplier, useExactIn);
+    }
+
+    /**
+     * @notice Calculates fill amounts for each component.
+     * @param components The fill components.
+     * @param scalingMultiplier The scaling multiplier.
+     * @param useExactIn Whether to use exact-in mode.
+     * @return fillAmounts The calculated fill amounts.
+     */
+    function _calculateFillAmounts(
+        FillComponent[] calldata components,
+        uint256 scalingMultiplier,
+        bool useExactIn
+    ) internal pure returns (uint256[] memory fillAmounts) {
+        fillAmounts = new uint256[](components.length);
+        for (uint256 i = 0; i < components.length; i++) {
+            if (components[i].applyScaling) {
+                if (useExactIn) {
+                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
+                } else {
+                    fillAmounts[i] = components[i].minimumFillAmount;
+                }
+            } else {
+                fillAmounts[i] = components[i].minimumFillAmount;
+            }
+        }
+        return fillAmounts;
+    }
+
+    /**
+     * @notice Calculates claim amounts.
+     * @param maximumClaimAmounts The maximum amounts to claim.
+     * @param scalingMultiplier The scaling multiplier.
+     * @param useExactIn Whether to use exact-in mode.
+     * @return claimAmounts The calculated claim amounts.
+     */
+    function _calculateClaimAmounts(
+        Lock[] calldata maximumClaimAmounts,
+        uint256 scalingMultiplier,
+        bool useExactIn
+    ) internal pure returns (uint256[] memory claimAmounts) {
+        claimAmounts = new uint256[](maximumClaimAmounts.length);
+        if (useExactIn) {
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
+        } else {
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
+            }
+        }
+        return claimAmounts;
+    }
+
+    /**
      * @notice Internal view function to get the claim reduction scaling factor.
      * @param claimHash The hash of the claim.
      * @return scalingFactor The scaling factor (returns 1e18 if not set, 0 if cancelled).
@@ -1451,6 +1485,36 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     // ======== Internal Pure Functions ========
+
+    /**
+     * @notice Calculates the current scaling factor from the price curve.
+     * @param priceCurve The price curve to apply.
+     * @param targetBlock The target block number.
+     * @param fillBlock The fill block number.
+     * @return currentScalingFactor The calculated current scaling factor.
+     */
+    function _calculateCurrentScalingFactor(
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock
+    ) internal pure returns (uint256 currentScalingFactor) {
+        currentScalingFactor = BASE_SCALING_FACTOR;
+        if (targetBlock != 0) {
+            if (targetBlock > fillBlock) {
+                revert InvalidTargetBlock(fillBlock, targetBlock);
+            }
+            uint256 blocksPassed;
+            unchecked {
+                blocksPassed = fillBlock - targetBlock;
+            }
+            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
+        } else {
+            if (priceCurve.length != 0) {
+                revert InvalidTargetBlockDesignation();
+            }
+        }
+        return currentScalingFactor;
+    }
 
     /**
      * @notice Derives the claim hash from compact and mandate hash based on a typehash.
