@@ -194,8 +194,6 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        fillBlock = _validateFillBlock(fillBlock);
-
         (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
             compact,
             mandate,
@@ -203,7 +201,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             adjustment,
             adjustmentAuthorization,
             claimant,
-            fillBlock,
+            _validateFillBlock(fillBlock),
             fillHashes
         );
 
@@ -667,11 +665,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
-        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
 
-        if (useExactIn) {
+        // Determine whether to increase fill amounts (exact-in) or decrease claim amounts (exact-out).
+        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
+        if ((scalingFactor > BASE_SCALING_FACTOR)
+            .or(
+                scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
+            )) {
             // For exact-in, increase fill amount and use maximum claim amounts.
             scalingMultiplier = currentScalingFactor
                 + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
