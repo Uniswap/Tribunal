@@ -80,7 +80,6 @@ abstract contract MockSetup is Test {
     uint256 targetBlock;
     uint256 sourceChainId;
     address arbiter;
-    ResolvedCrossChainOrder public order;
 
     function setUp() public {
         tribunal = new ERC7683Tribunal();
@@ -93,7 +92,9 @@ abstract contract MockSetup is Test {
         targetBlock = 100;
         arbiter = makeAddr("Arbiter");
         sourceChainId = 1;
+    }
 
+    function _getOrder() internal view returns (ResolvedCrossChainOrder memory) {
         Output memory outputMaxSpent = Output({
             token: bytes32(uint256(uint160(address(token)))),
             amount: type(uint256).max,
@@ -121,7 +122,7 @@ abstract contract MockSetup is Test {
         BatchCompact memory compact = _getBatchCompact();
         Mandate memory mandate = _getMandate();
 
-        order = ResolvedCrossChainOrder({
+        return ResolvedCrossChainOrder({
             user: sponsor,
             originChainId: 1,
             openDeadline: uint32(compact.expires),
@@ -253,6 +254,7 @@ abstract contract MockSetup is Test {
 
 contract ERC7683Tribunal_Fill is MockSetup {
     function test_revert_InvalidOriginData_InvalidClaimOffset() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Mandate memory mandate = _getMandate();
         bytes32[] memory fillHashes = new bytes32[](mandate.fills.length);
         for (uint256 i = 0; i < mandate.fills.length; i++) {
@@ -275,6 +277,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidOriginData_InvlaidLength() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: arbiter,
@@ -352,6 +355,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidFillerData_InvalidAdjustmentOffset() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Adjustment memory adjustment = _getAdjustment();
         adjustment.adjustmentAuthorization =
             _toAdjustmentSignature(adjustment, _getBatchCompact(), _getMandate());
@@ -371,6 +375,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidFillerData_InvalidAdjustmentLength() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Adjustment memory adjustment = Adjustment({
             adjuster: adjuster,
             fillIndex: 0,
@@ -408,6 +413,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_success(address filler_) public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         token.transfer(filler_, minimumFillAmount);
         vm.prank(filler_);
         token.approve(address(tribunal), minimumFillAmount);

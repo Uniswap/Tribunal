@@ -7,6 +7,15 @@ optimizer_runs = 4_294_967_295
 via_ir = true
 bytecode_hash = "none"
 
+[profile.coverage]
+src = "src"
+out = "out"
+libs = ["lib"]
+evm_version = "cancun"
+optimizer_runs = 4_294_967_295
+via_ir = false
+bytecode_hash = "none"
+
 [fmt]
 line_length = 100
 
