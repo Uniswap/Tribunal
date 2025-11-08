@@ -67,11 +67,13 @@ struct RecipientCallback {
 
 // Arguments signed for by adjuster.
 struct Adjustment {
+    address adjuster; // Assigned adjuster for the fill (not included in EIP-712 payload).
     // bytes32 claimHash included in EIP-712 payload but not provided as an argument.
     uint256 fillIndex;
     uint256 targetBlock;
     uint256[] supplementalPriceCurve; // Additional scaling factor specified duration on price curve.
     bytes32 validityConditions; // Optional value consisting of a number of blocks past the target and a exclusive filler address.
+    bytes adjustmentAuthorization; // Authorization from the adjuster (not included in EIP-712 payload).
 }
 
 // Struct for event emissions that pairs fill amounts with recipients.

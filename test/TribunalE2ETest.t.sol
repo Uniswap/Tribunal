@@ -394,10 +394,12 @@ contract TribunalE2ETest is DeployTheCompact {
 
         // Adjuster signs adjustment for cross-chain fill
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: block.number,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(uint256(uint160(filler)))
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: "" // Will be set below
         });
 
         // Generate adjustment signature for verification on Chain 2
@@ -436,13 +438,14 @@ contract TribunalE2ETest is DeployTheCompact {
         BatchClaim memory batchClaim =
             BatchClaim({compact: compact, sponsorSignature: "", allocatorSignature: ""});
 
+        // Set the adjustment authorization
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         // Execute the cross-chain fill
         (bytes32 returnedClaimHash,, uint256[] memory fillAmounts,) = tribunalChain2.fill(
             batchClaim.compact,
             fills[0],
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashesForExecution,
             bytes32(uint256(uint160(filler))),
             0

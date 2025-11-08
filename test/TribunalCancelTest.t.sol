@@ -88,13 +88,6 @@ contract TribunalCancelTest is Test {
         emit ITribunal.Cancel(sponsor, claimHash);
         tribunal.cancel(claim.compact, mandateHash);
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -105,16 +98,26 @@ contract TribunalCancelTest is Test {
 
         // Sign the adjustment
         bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(claim.compact, fillMandateHash);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
                     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 adjustmentClaimHash,
-                adjustment.fillIndex,
-                adjustment.targetBlock,
-                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
-                adjustment.validityConditions
+                adjustmentForSig.fillIndex,
+                adjustmentForSig.targetBlock,
+                keccak256(abi.encodePacked(adjustmentForSig.supplementalPriceCurve)),
+                adjustmentForSig.validityConditions
             )
         );
 
@@ -134,20 +137,20 @@ contract TribunalCancelTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
+
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 2 ether
-        }(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
 
         assertEq(address(0xBEEF).balance, 0 ether);
         assertEq(initialSenderBalance, address(this).balance);
@@ -229,13 +232,6 @@ contract TribunalCancelTest is Test {
             commitments: commitments
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -246,6 +242,15 @@ contract TribunalCancelTest is Test {
 
         bytes32 claimHash = tribunal.deriveClaimHash(compact, mandateHash);
 
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
         // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
             abi.encode(
@@ -253,10 +258,10 @@ contract TribunalCancelTest is Test {
                     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 claimHash,
-                adjustment.fillIndex,
-                adjustment.targetBlock,
-                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
-                adjustment.validityConditions
+                adjustmentForSig.fillIndex,
+                adjustmentForSig.targetBlock,
+                keccak256(abi.encodePacked(adjustmentForSig.supplementalPriceCurve)),
+                adjustmentForSig.validityConditions
             )
         );
 
@@ -275,6 +280,15 @@ contract TribunalCancelTest is Test {
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         uint256 initialSenderBalance = address(this).balance;
 
@@ -296,16 +310,7 @@ contract TribunalCancelTest is Test {
 
         tribunal.fill{
             value: 2 ether
-        }(
-            compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
 
         assertEq(address(0xBEEF).balance, fill.components[0].minimumFillAmount);
         assertEq(address(this).balance, initialSenderBalance - fill.components[0].minimumFillAmount);
@@ -402,13 +407,6 @@ contract TribunalCancelTest is Test {
         emit ITribunal.Cancel(sponsor, claimHash);
         tribunal.cancel(compact, mandateHash);
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -419,16 +417,26 @@ contract TribunalCancelTest is Test {
 
         // Sign the adjustment
         bytes32 adjustmentClaimHash = tribunal.deriveClaimHash(compact, fillMandateHash);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
                     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)"
                 ),
                 adjustmentClaimHash,
-                adjustment.fillIndex,
-                adjustment.targetBlock,
-                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
-                adjustment.validityConditions
+                adjustmentForSig.fillIndex,
+                adjustmentForSig.targetBlock,
+                keccak256(abi.encodePacked(adjustmentForSig.supplementalPriceCurve)),
+                adjustmentForSig.validityConditions
             )
         );
 
@@ -448,20 +456,20 @@ contract TribunalCancelTest is Test {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
         bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
 
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
+
         uint256 initialSenderBalance = address(this).balance;
         vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 2 ether
-        }(
-            compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
 
         assertEq(address(0xBEEF).balance, 0 ether);
         assertEq(initialSenderBalance, address(this).balance);

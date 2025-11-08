@@ -268,18 +268,30 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustment);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
@@ -305,14 +317,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         // Verify all recipients received their tokens
@@ -410,32 +415,37 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         vm.fee(1 gwei);
         vm.txGasPrice(1 gwei + 100 gwei + 2);
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: targetBlock,
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustment);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: targetBlock,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: targetBlock,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
         (,, uint256[] memory fillAmounts,) = tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         // Calculate expected scaling for component 0 (applyScaling=true):
@@ -541,18 +551,30 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustment);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
@@ -561,14 +583,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         // Verify that ALL THREE transfers occurred (total = 100 + 75 + 50 = 225)
@@ -672,32 +687,37 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         vm.fee(1 gwei);
         vm.txGasPrice(1 gwei + 100 gwei + 5 gwei);
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: targetBlock,
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustment);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: targetBlock,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: targetBlock,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
 
         vm.prank(address(filler));
         (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         // In exact-out mode, BOTH components stay at their minimum fill amounts
@@ -832,18 +852,30 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustment);
+
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: adjustmentSignature
+        });
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
@@ -853,14 +885,7 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         // Verify that the callback was triggered on the FIRST component's recipient

@@ -57,10 +57,12 @@ contract ReentrantReceiver {
 
     receive() external payable {
         Adjustment memory adjustment = Adjustment({
+            adjuster: address(this),
             fillIndex: 0,
             targetBlock: block.number,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -70,9 +72,7 @@ contract ReentrantReceiver {
         try _TRIBUNAL.fill(
             _claim.compact,
             _mandate.fills[0],
-            address(this),
             adjustment,
-            new bytes(0),
             fillHashes,
             bytes32(uint256(uint160(address(this)))),
             0

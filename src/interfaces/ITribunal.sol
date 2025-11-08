@@ -102,9 +102,7 @@ interface ITribunal {
      * @notice Attempt to perform a standard fill.
      * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param fillHashes An array of the hashes of each fill.
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
@@ -116,9 +114,7 @@ interface ITribunal {
     function fill(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock
@@ -136,9 +132,7 @@ interface ITribunal {
      * @notice Attempt to perform a standard fill and execute a dispatch callback.
      * @param compact The compact parameters and constraints.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param fillHashes An array of the hashes of each fill.
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
@@ -151,9 +145,7 @@ interface ITribunal {
     function fillAndDispatch(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock,
@@ -173,9 +165,7 @@ interface ITribunal {
      * @dev This function simultaneously claims tokens and performs a fill when both are on a single chain.
      * @param claim The batch claim containing compact parameters, sponsor signature, and allocator signature.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param fillHashes An array of the hashes of each fill.
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
@@ -187,9 +177,7 @@ interface ITribunal {
     function claimAndFill(
         BatchClaim calldata claim,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock

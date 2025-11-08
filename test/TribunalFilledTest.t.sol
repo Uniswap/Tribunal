@@ -76,13 +76,6 @@ contract TribunalFilledTest is Test {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -105,21 +98,16 @@ contract TribunalFilledTest is Test {
         );
         bytes32 actualClaimHash = tribunal.deriveClaimHash(claim.compact, actualMandateHash);
 
-        FillRecipient[] memory fillRecipients = new FillRecipient[](1);
-        fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xCAFE)});
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: "" // Will be set below
+        });
 
-        // Expect Fill event for cross-chain fills
-        vm.expectEmit(true, true, true, true, address(tribunal));
-        emit ITribunal.Fill(
-            sponsor,
-            bytes32(uint256(uint160(address(this)))),
-            actualClaimHash,
-            fillRecipients,
-            claimAmounts,
-            adjustment.targetBlock
-        );
-
-        // Sign the adjustment with the actual claimHash that will be computed in _fill
+        // Sign the adjustment with the actual claimHash
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 keccak256(
@@ -147,20 +135,25 @@ contract TribunalFilledTest is Test {
 
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
-        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+        adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
+
+        FillRecipient[] memory fillRecipients = new FillRecipient[](1);
+        fillRecipients[0] = FillRecipient({fillAmount: 1 ether, recipient: address(0xCAFE)});
+
+        // Expect Fill event for cross-chain fills
+        vm.expectEmit(true, true, true, true, address(tribunal));
+        emit ITribunal.Fill(
+            sponsor,
+            bytes32(uint256(uint160(address(this)))),
+            actualClaimHash,
+            fillRecipients,
+            claimAmounts,
+            adjustment.targetBlock
+        );
 
         tribunal.fill{
             value: 1 ether
-        }(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
         assertEq(tribunal.filled(actualClaimHash), bytes32(uint256(uint160(address(this)))));
     }
 }

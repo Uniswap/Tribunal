@@ -111,10 +111,12 @@ contract TribunalFillRevertsTest is Test {
         });
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: vm.getBlockNumber() + 100,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -129,16 +131,7 @@ contract TribunalFillRevertsTest is Test {
         );
         tribunal.fill{
             value: 1 ether
-        }(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            new bytes(0),
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
     }
 
     function test_FillRevertsOnExpiredMandate() public {
@@ -181,10 +174,12 @@ contract TribunalFillRevertsTest is Test {
         });
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: vm.getBlockNumber(),
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -194,14 +189,7 @@ contract TribunalFillRevertsTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("Expired(uint256)", fill.expires));
         tribunal.fill(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            new bytes(0),
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
+            claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0
         );
     }
 
@@ -245,13 +233,6 @@ contract TribunalFillRevertsTest is Test {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -262,36 +243,34 @@ contract TribunalFillRevertsTest is Test {
         );
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
 
-        // Sign the adjustment
-        bytes memory adjustmentSignature = signAdjustment(adjustment, claimHash, adjusterPrivateKey);
+        // Create adjustment for signing
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: signAdjustment(adjustmentForSig, claimHash, adjusterPrivateKey)
+        });
 
         // Send ETH with the first fill
         tribunal.fill{
             value: 1 ether
-        }(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
 
         vm.expectRevert(abi.encodeWithSignature("AlreadyFilled()"));
         tribunal.fill{
             value: 1 ether
-        }(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
-        );
+        }(claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
     }
 
     function test_FillRevertsOnInvalidGasPrice() public {
@@ -334,10 +313,12 @@ contract TribunalFillRevertsTest is Test {
         });
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: vm.getBlockNumber(),
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
         });
 
         bytes32[] memory fillHashes = new bytes32[](1);
@@ -348,14 +329,7 @@ contract TribunalFillRevertsTest is Test {
 
         vm.expectRevert(abi.encodeWithSignature("InvalidGasPrice()"));
         tribunal.fill(
-            claim.compact,
-            fill,
-            adjuster,
-            adjustment,
-            new bytes(0),
-            fillHashes,
-            bytes32(uint256(uint160(address(this)))),
-            0
+            claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0
         );
     }
 }

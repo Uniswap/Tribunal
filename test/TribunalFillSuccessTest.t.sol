@@ -217,18 +217,20 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         // Derive the actual claim hash
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: "" // Will be set below
+        });
 
         // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
@@ -258,22 +260,13 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
-        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+        adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
 
         uint256 initialFillerBalance = address(filler).balance;
         vm.prank(address(filler));
         tribunal.claimAndFill{
             value: 1 ether
-        }(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
-        );
+        }(claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0);
 
         assertEq(address(0xBEEF).balance, 1 ether);
         assertEq(address(filler).balance, initialFillerBalance); // Filler balance unchanged (paid 1 ether, received 1 ether from TheCompact)
@@ -346,13 +339,6 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             allocatorSignature: new bytes(0)
         });
 
-        Adjustment memory adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         bytes32[] memory fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
@@ -363,6 +349,15 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         // Derive the actual claim hash
         bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: "" // Will be set below
+        });
 
         // Sign the adjustment
         bytes32 adjustmentHash = keccak256(
@@ -392,21 +387,14 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
-        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+        adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
 
         uint256[] memory claimAmounts = new uint256[](1);
         claimAmounts[0] = commitments[0].amount;
 
         vm.prank(address(filler));
         tribunal.claimAndFill(
-            claim,
-            fill,
-            adjuster,
-            adjustment,
-            adjustmentSignature,
-            fillHashes,
-            bytes32(uint256(uint160(address(filler)))),
-            0
+            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
         );
 
         assertEq(token.balanceOf(address(0xBEEF)), 100e18);

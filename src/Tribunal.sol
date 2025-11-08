@@ -133,9 +133,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function fill(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock
@@ -152,16 +150,8 @@ contract Tribunal is BlockNumberish, ITribunal {
     {
         fillBlock = _validateFillBlock(fillBlock);
 
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            compact,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            fillBlock,
-            fillHashes
-        );
+        (claimHash, mandateHash, fillAmounts, claimAmounts) =
+            _fill(compact, mandate, adjustment, claimant, fillBlock, fillHashes);
 
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
@@ -176,9 +166,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function fillAndDispatch(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock,
@@ -195,14 +183,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            compact,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            _validateFillBlock(fillBlock),
-            fillHashes
+            compact, mandate, adjustment, claimant, _validateFillBlock(fillBlock), fillHashes
         );
 
         _performDispatchCallback(
@@ -216,9 +197,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function claimAndFill(
         BatchClaim calldata claim,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock
@@ -238,9 +217,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             claim.sponsorSignature,
             claim.allocatorSignature,
             mandate,
-            adjuster,
             adjustment,
-            adjustmentAuthorization,
             claimant,
             _validateFillBlock(fillBlock),
             fillHashes
@@ -853,9 +830,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @notice Internal implementation of a standard fill.
      * @param compact The compact parameters.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
@@ -867,9 +842,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function _fill(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock,
         bytes32[] calldata fillHashes
@@ -883,8 +856,9 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         // Validate fill conditions and derive mandate hash.
-        mandateHash =
-            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
+        mandateHash = _validateAndDeriveMandateHash(
+            mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
+        );
 
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
@@ -913,10 +887,11 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Verify adjuster authorization.
-        if (!adjuster.isValidSignatureNow(
-                _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
-                adjustmentAuthorization
-            )) {
+        if (!adjustment.adjuster
+                .isValidSignatureNow(
+                    _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
+                    adjustment.adjustmentAuthorization
+                )) {
             revert InvalidAdjustment();
         }
 
@@ -951,9 +926,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @param sponsorSignature The signature of the sponsor.
      * @param allocatorSignature The signature of the allocator.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
@@ -967,9 +940,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         bytes calldata sponsorSignature,
         bytes calldata allocatorSignature,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock,
         bytes32[] calldata fillHashes
@@ -983,8 +954,9 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         // Validate fill conditions and derive mandate hash.
-        mandateHash =
-            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
+        mandateHash = _validateAndDeriveMandateHash(
+            mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
+        );
 
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
@@ -1016,10 +988,11 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Verify adjuster authorization.
-        if (!adjuster.isValidSignatureNow(
-                _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
-                adjustmentAuthorization
-            )) {
+        if (!adjustment.adjuster
+                .isValidSignatureNow(
+                    _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
+                    adjustment.adjustmentAuthorization
+                )) {
             revert InvalidAdjustment();
         }
 
