@@ -730,23 +730,25 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
 
         // Derive fill and claim amounts.
-        uint256 scalingMultiplier;
-        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments, mandate, adjustment, fillBlock
-        );
+        {
+            uint256 scalingMultiplier;
+            (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
+                compact.commitments, mandate, adjustment, fillBlock
+            );
 
-        // Derive and check claim hash.
-        claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != bytes32(0)) {
-            revert AlreadyFilled();
-        }
+            // Derive and check claim hash.
+            claimHash = deriveClaimHash(compact, mandateHash);
+            if (_dispositions[claimHash] != bytes32(0)) {
+                revert AlreadyFilled();
+            }
 
-        // Set the disposition for the given claim hash.
-        _dispositions[claimHash] = claimant;
+            // Set the disposition for the given claim hash.
+            _dispositions[claimHash] = claimant;
 
-        // Store the claim reduction scaling factor if claims were reduced.
-        if (scalingMultiplier < BASE_SCALING_FACTOR) {
-            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            // Store the claim reduction scaling factor if claims were reduced.
+            if (scalingMultiplier < BASE_SCALING_FACTOR) {
+                _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            }
         }
 
         // Verify adjuster authorization.
@@ -812,14 +814,12 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        BatchCompact calldata compact = claim.compact;
-        bytes calldata sponsorSignature = claim.sponsorSignature;
-        bytes calldata allocatorSignature = claim.allocatorSignature;
-
         // Validate fill conditions and derive mandate hash.
         mandateHash = _validateAndDeriveMandateHash(
             mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
         );
+
+        BatchCompact calldata compact = claim.compact;
 
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
@@ -831,8 +831,8 @@ contract Tribunal is BlockNumberish, ITribunal {
         claimHash = _processClaimAndCallback(
             compact,
             mandate,
-            sponsorSignature,
-            allocatorSignature,
+            claim.sponsorSignature,
+            claim.allocatorSignature,
             mandateHash,
             fillAmounts,
             claimant,
