@@ -11,7 +11,8 @@ import {
     FillComponent,
     Adjustment,
     RecipientCallback,
-    FillRecipient
+    FillRecipient,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
@@ -68,7 +69,7 @@ contract TribunalCancelTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         // Make it cross-chain to test the AlreadyClaimed check
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,

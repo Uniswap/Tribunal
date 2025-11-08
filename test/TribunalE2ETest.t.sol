@@ -14,7 +14,8 @@ import {
     FillComponent,
     RecipientCallback,
     Adjustment,
-    FillRecipient
+    FillRecipient,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {
     MANDATE_TYPEHASH,
@@ -432,8 +433,8 @@ contract TribunalE2ETest is DeployTheCompact {
         bridgedTokenChain2.approve(address(tribunalChain2), FILL_AMOUNT);
 
         // Create batch claim for Chain 2
-        ITribunal.BatchClaim memory batchClaim =
-            ITribunal.BatchClaim({compact: compact, sponsorSignature: "", allocatorSignature: ""});
+        BatchClaim memory batchClaim =
+            BatchClaim({compact: compact, sponsorSignature: "", allocatorSignature: ""});
 
         // Execute the cross-chain fill
         (bytes32 returnedClaimHash,, uint256[] memory fillAmounts,) = tribunalChain2.fill(

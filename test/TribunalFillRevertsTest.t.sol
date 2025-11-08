@@ -10,7 +10,8 @@ import {
     FillParameters,
     FillComponent,
     Adjustment,
-    RecipientCallback
+    RecipientCallback,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {MANDATE_TYPEHASH, ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
@@ -97,7 +98,7 @@ contract TribunalFillRevertsTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -167,7 +168,7 @@ contract TribunalFillRevertsTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -232,7 +233,7 @@ contract TribunalFillRevertsTest is Test {
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 1 ether});
 
         // Use a different chainId to make it a cross-chain fill
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,
@@ -320,7 +321,7 @@ contract TribunalFillRevertsTest is Test {
         Lock[] memory commitments = new Lock[](1);
         commitments[0] = Lock({lockTag: bytes12(0), token: address(0xDEAD), amount: 1 ether});
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: sponsor,

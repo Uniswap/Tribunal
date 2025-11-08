@@ -8,7 +8,8 @@ import {
     FillParameters,
     FillComponent,
     RecipientCallback,
-    Adjustment
+    Adjustment,
+    BatchClaim
 } from "../../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
@@ -16,12 +17,12 @@ contract ReentrantReceiver {
     error NoProfit(uint256 balanceBefore, uint256 balanceAfter);
 
     Tribunal private immutable _TRIBUNAL;
-    ITribunal.BatchClaim private _claim;
+    BatchClaim private _claim;
     Mandate private _mandate;
 
     constructor(Tribunal _tribunal) payable {
         _TRIBUNAL = _tribunal;
-        _claim = ITribunal.BatchClaim({
+        _claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(this),
                 sponsor: address(this),
@@ -87,7 +88,7 @@ contract ReentrantReceiver {
         return _mandate.fills[0];
     }
 
-    function getClaim() public view returns (ITribunal.BatchClaim memory) {
+    function getClaim() public view returns (BatchClaim memory) {
         return _claim;
     }
 }

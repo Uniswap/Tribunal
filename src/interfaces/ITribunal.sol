@@ -9,7 +9,10 @@ import {
     Mandate,
     RecipientCallback,
     FillRecipient,
-    DispatchParameters
+    DispatchParameters,
+    DispositionDetails,
+    BatchClaim,
+    ArgDetail
 } from "../types/TribunalStructs.sol";
 
 /**
@@ -94,19 +97,6 @@ interface ITribunal {
     error InvalidCommitmentsArray();
     error InvalidDispatchCallback();
     error DispatchNotAvailable();
-
-    // ======== Type Declarations ========
-    struct BatchClaim {
-        BatchCompact compact;
-        bytes sponsorSignature; // Authorization from the sponsor
-        bytes allocatorSignature; // Authorization from the allocator
-    }
-
-    struct ArgDetail {
-        string tokenPath;
-        string argPath;
-        string description;
-    }
 
     /**
      * @notice Attempt to perform a standard fill.
@@ -194,7 +184,7 @@ interface ITribunal {
      * @return fillAmounts The amounts of tokens to be filled for each component.
      * @return claimAmounts The amount of tokens to be claimed.
      */
-    function fillAndClaim(
+    function claimAndFill(
         BatchClaim calldata claim,
         FillParameters calldata mandate,
         address adjuster,
@@ -299,6 +289,16 @@ interface ITribunal {
         external
         view
         returns (uint256 scalingFactor);
+
+    /**
+     * @notice Returns disposition details given an array of claim hashes.
+     * @param claimHashes Array of claim hashes to query.
+     * @return details Array of disposition details containing the claimant (if any) and scaling factor for each.
+     */
+    function getDispositionDetails(bytes32[] calldata claimHashes)
+        external
+        view
+        returns (DispositionDetails[] memory details);
 
     /**
      * @notice Derives the mandate hash using EIP-712 typed data.

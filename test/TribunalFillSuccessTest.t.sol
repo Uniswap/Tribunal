@@ -16,7 +16,8 @@ import {
     FillComponent,
     FillRequirement,
     Adjustment,
-    RecipientCallback
+    RecipientCallback,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {
     BatchCompact,
@@ -204,7 +205,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -261,7 +262,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
 
         uint256 initialFillerBalance = address(filler).balance;
         vm.prank(address(filler));
-        tribunal.fillAndClaim{
+        tribunal.claimAndFill{
             value: 1 ether
         }(
             claim,
@@ -333,7 +334,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
             mandateHash
         );
 
-        ITribunal.BatchClaim memory claim = ITribunal.BatchClaim({
+        BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: address(tribunal), // Must match what's signed
                 sponsor: sponsor,
@@ -397,7 +398,7 @@ contract TribunalFillSuccessTest is DeployTheCompact, ITribunalCallback {
         claimAmounts[0] = commitments[0].amount;
 
         vm.prank(address(filler));
-        tribunal.fillAndClaim(
+        tribunal.claimAndFill(
             claim,
             fill,
             adjuster,

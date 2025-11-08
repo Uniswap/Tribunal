@@ -19,7 +19,8 @@ import {
     FillRequirement,
     Adjustment,
     RecipientCallback,
-    DispatchParameters
+    DispatchParameters,
+    BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
 
@@ -186,7 +187,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     function _setupFill()
         internal
         returns (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -240,7 +241,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         bytes memory sponsorSig = _generateSponsorSignature(compact, mandateHash);
 
         // Use a different chainId for cross-chain fill (e.g., Ethereum mainnet)
-        claim = ITribunal.BatchClaim({
+        claim = BatchClaim({
             compact: compact, sponsorSignature: sponsorSig, allocatorSignature: new bytes(0)
         });
 
@@ -259,7 +260,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_FillAndDispatch_Success() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -337,7 +338,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_FillThenDispatch_Success() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -415,8 +416,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     }
 
     function test_CancelAndDispatch_Success() public {
-        (ITribunal.BatchClaim memory claim,,,, bytes32 mandateHash, bytes32 claimHash) =
-            _setupFill();
+        (BatchClaim memory claim,,,, bytes32 mandateHash, bytes32 claimHash) = _setupFill();
 
         uint256 targetChainId = 10; // Optimism
         bytes memory context = abi.encode("cancel dispatch");
@@ -458,8 +458,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     }
 
     function test_CancelThenDispatch_Success() public {
-        (ITribunal.BatchClaim memory claim,,,, bytes32 mandateHash, bytes32 claimHash) =
-            _setupFill();
+        (BatchClaim memory claim,,,, bytes32 mandateHash, bytes32 claimHash) = _setupFill();
 
         // First cancel
         vm.prank(sponsor);
@@ -502,7 +501,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_FillAndDispatch_RevertsOnCallbackRevert() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -539,7 +538,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_FillAndDispatch_RevertsOnWrongSelector() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -576,7 +575,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_Dispatch_RevertsOnCallbackRevert() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -617,7 +616,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
     function test_Dispatch_RevertsOnWrongSelector() public {
         (
-            ITribunal.BatchClaim memory claim,
+            BatchClaim memory claim,
             FillParameters memory fill,
             Adjustment memory adjustment,
             bytes32[] memory fillHashes,
@@ -657,7 +656,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     }
 
     function test_CancelAndDispatch_RevertsOnWrongSelector() public {
-        (ITribunal.BatchClaim memory claim,,,, bytes32 mandateHash,) = _setupFill();
+        (BatchClaim memory claim,,,, bytes32 mandateHash,) = _setupFill();
 
         // Set mock to return wrong selector
         dispatchTarget.setMode(MockDispatchTarget.Mode.WrongSelector);
