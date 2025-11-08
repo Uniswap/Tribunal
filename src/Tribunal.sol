@@ -1277,7 +1277,6 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256 scalingMultiplier
         )
     {
-        FillComponent[] calldata components = mandate.components;
         uint256 baselinePriorityFee = mandate.baselinePriorityFee;
         uint256 scalingFactor = mandate.scalingFactor;
 
@@ -1301,7 +1300,7 @@ contract Tribunal is BlockNumberish, ITribunal {
             _calculateScalingMultiplier(currentScalingFactor, scalingFactor, baselinePriorityFee);
 
         // Calculate fill amounts
-        fillAmounts = _calculateFillAmounts(components, scalingMultiplier, useExactIn);
+        fillAmounts = _calculateFillAmounts(mandate.components, scalingMultiplier, useExactIn);
 
         // Calculate claim amounts
         claimAmounts = _calculateClaimAmounts(maximumClaimAmounts, scalingMultiplier, useExactIn);
