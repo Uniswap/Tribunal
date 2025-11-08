@@ -245,17 +245,19 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
             compact: compact, sponsorSignature: sponsorSig, allocatorSignature: new bytes(0)
         });
 
-        adjustment = Adjustment({
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
-        });
-
         fillHashes = new bytes32[](1);
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
         claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+
+        adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
+        });
     }
 
     function test_FillAndDispatch_Success() public {
@@ -300,15 +302,15 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         vm.recordLogs();
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         vm.prank(address(filler));
         tribunal.fillAndDispatch{
             value: 0.5 ether
         }(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0,
@@ -351,14 +353,14 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         token.approve(address(tribunal), type(uint256).max);
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         // First, perform the fill
         vm.prank(address(filler));
         tribunal.fill(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0
@@ -521,14 +523,14 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         token.approve(address(tribunal), type(uint256).max);
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         vm.prank(address(filler));
         vm.expectRevert("MockDispatchTarget: forced revert");
         tribunal.fillAndDispatch(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0,
@@ -558,14 +560,14 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         token.approve(address(tribunal), type(uint256).max);
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         vm.prank(address(filler));
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
         tribunal.fillAndDispatch(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0,
@@ -588,14 +590,14 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         token.approve(address(tribunal), type(uint256).max);
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         // Perform fill first
         vm.prank(address(filler));
         tribunal.fill(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0
@@ -629,14 +631,14 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.prank(address(filler));
         token.approve(address(tribunal), type(uint256).max);
 
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
         // Perform fill first
         vm.prank(address(filler));
         tribunal.fill(
             claim.compact,
             fill,
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashes,
             bytes32(uint256(uint160(address(filler)))),
             0

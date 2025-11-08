@@ -133,9 +133,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function fill(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock
@@ -152,16 +150,8 @@ contract Tribunal is BlockNumberish, ITribunal {
     {
         fillBlock = _validateFillBlock(fillBlock);
 
-        (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            compact,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            fillBlock,
-            fillHashes
-        );
+        (claimHash, mandateHash, fillAmounts, claimAmounts) =
+            _fill(compact, mandate, adjustment, claimant, fillBlock, fillHashes);
 
         // Return any unused native tokens to the caller.
         uint256 remaining = address(this).balance;
@@ -176,9 +166,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function fillAndDispatch(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock,
@@ -194,17 +182,8 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256[] memory claimAmounts
         )
     {
-        fillBlock = _validateFillBlock(fillBlock);
-
         (claimHash, mandateHash, fillAmounts, claimAmounts) = _fill(
-            compact,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            fillBlock,
-            fillHashes
+            compact, mandate, adjustment, claimant, _validateFillBlock(fillBlock), fillHashes
         );
 
         _performDispatchCallback(
@@ -218,9 +197,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function claimAndFill(
         BatchClaim calldata claim,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32[] calldata fillHashes,
         bytes32 claimant,
         uint256 fillBlock
@@ -236,16 +213,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         return _claimAndFill(
-            claim.compact,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            _validateFillBlock(fillBlock),
-            fillHashes
+            claim, mandate, adjustment, claimant, _validateFillBlock(fillBlock), fillHashes
         );
     }
 
@@ -295,21 +263,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         bytes32 claimant = _dispositions[sourceClaimHash];
 
-        // An available claimant indicates a fill, transfer all available tokens to the claimant
+        // Handle claimant transfer if available
         if (claimant != bytes32(0)) {
-            if (commitment.token == address(0)) {
-                // Handle native token
-                SafeTransferLib.safeTransferETH(
-                    address(uint160(uint256(claimant))), address(this).balance
-                );
-            } else {
-                // Handle ERC20 tokens
-                commitment.token.safeTransferAll(address(uint160(uint256(claimant))));
-            }
-
+            _handleClaimantTransfer(commitment, claimant);
             return bytes32(0);
         }
 
+        // Ensure recipient is set (default to sponsor if not provided)
         address sponsor = compact.sponsor;
         assembly ("memory-safe") {
             recipient := xor(recipient, mul(iszero(recipient), sponsor))
@@ -317,95 +277,26 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // An empty lockTag indicates a direct transfer
         if (commitment.lockTag == bytes12(0)) {
-            if (commitment.token == address(0)) {
-                // Handle native token (transfer full available balance)
-                SafeTransferLib.safeTransferETH(recipient, address(this).balance);
-            } else {
-                // Handle ERC20 tokens (transfer full available balance)
-                commitment.token.safeTransferAll(recipient);
-            }
+            _handleDirectTransfer(commitment, recipient);
             return bytes32(0);
         }
 
-        // Prepare the ids and amounts, dependent on the actual balance
-        uint256[2][] memory idsAndAmounts = new uint256[2][](1);
-        uint256 callValue = 0;
-        idsAndAmounts[0][0] =
-            uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
-        if (compact.commitments[0].token == address(0)) {
-            // Handle native token
-            callValue = address(this).balance;
-            idsAndAmounts[0][1] = callValue;
-        } else {
-            // Handle ERC20 tokens
-            idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
-            if (_checkCompactAllowance(commitment.token, address(this)) < idsAndAmounts[0][1]) {
-                SafeTransferLib.safeApproveWithRetry(
-                    commitment.token, address(THE_COMPACT), type(uint256).max
-                );
-            }
-        }
+        // Prepare ids and amounts
+        (uint256[2][] memory idsAndAmounts, uint256 callValue) = _prepareIdsAndAmounts(commitment);
 
-        // An empty mandateHash indicates a deposit without a registration.
+        // Handle deposit without registration
         if (mandateHash == bytes32(0)) {
             THE_COMPACT.batchDeposit{value: callValue}(idsAndAmounts, recipient);
             return bytes32(0);
         }
 
-        // An empty nonce indicates an onchain allocator; wrap registration in prepare & execute hooks.
+        // Handle registration with or without onchain allocation
         if (compact.nonce == 0) {
-            // Do an on chain allocation if no nonce is provided
-            (, address allocator,,,) = THE_COMPACT.getLockDetails(idsAndAmounts[0][0]);
-
-            // Prepare the allocation with the allocator
-            (uint256 nonce) = IOnChainAllocation(allocator)
-                .prepareAllocation(
-                    compact.sponsor,
-                    idsAndAmounts,
-                    compact.arbiter,
-                    compact.expires,
-                    COMPACT_TYPEHASH_WITH_MANDATE,
-                    mandateHash,
-                    context
-                );
-
-            // deposit and register the tokens
-            (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
-                value: callValue
-            }(
-                compact.sponsor,
-                idsAndAmounts,
-                compact.arbiter,
-                nonce,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash
-            );
-
-            // execute the allocation
-            IOnChainAllocation(allocator)
-                .executeAllocation(
-                    compact.sponsor,
-                    idsAndAmounts, // The allocator will retrieve the actual amounts from the balance change, so we don't need to update the amounts
-                    compact.arbiter,
-                    compact.expires,
-                    COMPACT_TYPEHASH_WITH_MANDATE,
-                    mandateHash,
-                    context
-                );
+            registeredClaimHash =
+                _handleOnChainAllocation(compact, idsAndAmounts, callValue, mandateHash, context);
         } else {
-            // deposit and register the tokens directly and skip an on chain allocation
-            (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
-                value: callValue
-            }(
-                compact.sponsor,
-                idsAndAmounts,
-                compact.arbiter,
-                compact.nonce,
-                compact.expires,
-                COMPACT_TYPEHASH_WITH_MANDATE,
-                mandateHash
-            );
+            registeredClaimHash =
+                _handleDirectRegistration(compact, idsAndAmounts, callValue, mandateHash);
         }
         return registeredClaimHash;
     }
@@ -667,11 +558,13 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Calculate the scaling multiplier based on priority fee.
         uint256 scalingMultiplier;
-        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
 
-        if (useExactIn) {
+        // Determine whether to increase fill amounts (exact-in) or decrease claim amounts (exact-out).
+        // When neutral (scalingFactor == 1e18), determine mode from currentScalingFactor.
+        if ((scalingFactor > BASE_SCALING_FACTOR)
+            .or(
+                scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR
+            )) {
             // For exact-in, increase fill amount and use maximum claim amounts.
             scalingMultiplier = currentScalingFactor
                 + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
@@ -713,71 +606,24 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 baselinePriorityFee,
         uint256 scalingFactor
     ) external view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts) {
-        fillAmounts = new uint256[](components.length);
+        // Calculate the current scaling factor from price curve
+        uint256 currentScalingFactor =
+            _calculateCurrentScalingFactor(priceCurve, targetBlock, fillBlock);
 
-        // Calculate the common scaling values
-        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
-        if (targetBlock != 0) {
-            if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(fillBlock, targetBlock);
-            }
-            uint256 blocksPassed;
-            unchecked {
-                blocksPassed = fillBlock - targetBlock;
-            }
-            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
-        } else {
-            if (priceCurve.length != 0) {
-                revert InvalidTargetBlockDesignation();
-            }
-        }
-
+        // Validate scaling direction
         if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
             revert PriceCurveLib.InvalidPriceCurveParameters();
         }
 
-        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+        // Calculate scaling multiplier and determine mode
+        (uint256 scalingMultiplier, bool useExactIn) =
+            _calculateScalingMultiplier(currentScalingFactor, scalingFactor, baselinePriorityFee);
 
-        // Calculate the scaling multiplier
-        uint256 scalingMultiplier;
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
-
-        if (useExactIn) {
-            scalingMultiplier = currentScalingFactor
-                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
-        } else {
-            scalingMultiplier = currentScalingFactor
-                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
-        }
-
-        // Calculate fill amounts for each component
-        for (uint256 i = 0; i < components.length; i++) {
-            if (components[i].applyScaling) {
-                if (useExactIn) {
-                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
-                } else {
-                    fillAmounts[i] = components[i].minimumFillAmount;
-                }
-            } else {
-                // If not applying scaling, use the minimum amount as-is
-                fillAmounts[i] = components[i].minimumFillAmount;
-            }
-        }
+        // Calculate fill amounts
+        fillAmounts = _calculateFillAmounts(components, scalingMultiplier, useExactIn);
 
         // Calculate claim amounts
-        claimAmounts = new uint256[](maximumClaimAmounts.length);
-        if (useExactIn) {
-            // For exact-in, use maximum claim amounts unchanged
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount;
-            }
-        } else {
-            // For exact-out, apply scaling to claim amounts
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
-            }
-        }
+        claimAmounts = _calculateClaimAmounts(maximumClaimAmounts, scalingMultiplier, useExactIn);
 
         return (fillAmounts, claimAmounts);
     }
@@ -853,9 +699,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @notice Internal implementation of a standard fill.
      * @param compact The compact parameters.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
@@ -867,9 +711,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function _fill(
         BatchCompact calldata compact,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock,
         bytes32[] calldata fillHashes
@@ -883,40 +725,38 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         // Validate fill conditions and derive mandate hash.
-        mandateHash =
-            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
-
-        // Derive fill and claim amounts.
-        uint256 scalingMultiplier;
-        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments,
-            mandate.components,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
+        mandateHash = _validateAndDeriveMandateHash(
+            mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
         );
 
-        // Derive and check claim hash.
-        claimHash = deriveClaimHash(compact, mandateHash);
-        if (_dispositions[claimHash] != bytes32(0)) {
-            revert AlreadyFilled();
-        }
+        // Derive fill and claim amounts.
+        {
+            uint256 scalingMultiplier;
+            (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
+                compact.commitments, mandate, adjustment, fillBlock
+            );
 
-        // Set the disposition for the given claim hash.
-        _dispositions[claimHash] = claimant;
+            // Derive and check claim hash.
+            claimHash = deriveClaimHash(compact, mandateHash);
+            if (_dispositions[claimHash] != bytes32(0)) {
+                revert AlreadyFilled();
+            }
 
-        // Store the claim reduction scaling factor if claims were reduced.
-        if (scalingMultiplier < BASE_SCALING_FACTOR) {
-            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            // Set the disposition for the given claim hash.
+            _dispositions[claimHash] = claimant;
+
+            // Store the claim reduction scaling factor if claims were reduced.
+            if (scalingMultiplier < BASE_SCALING_FACTOR) {
+                _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            }
         }
 
         // Verify adjuster authorization.
-        if (!adjuster.isValidSignatureNow(
-                _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
-                adjustmentAuthorization
-            )) {
+        if (!adjustment.adjuster
+                .isValidSignatureNow(
+                    _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
+                    adjustment.adjustmentAuthorization
+                )) {
             revert InvalidAdjustment();
         }
 
@@ -947,13 +787,9 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /**
      * @notice Internal implementation of same-chain fill with a preceding claim execution.
-     * @param compact The compact parameters.
-     * @param sponsorSignature The signature of the sponsor.
-     * @param allocatorSignature The signature of the allocator.
+     * @param claim The compact parameters including signatures.
      * @param mandate The fill conditions and amount derivation parameters.
-     * @param adjuster The assigned adjuster for the fill.
-     * @param adjustment The adjustment provided by the adjuster for the fill.
-     * @param adjustmentAuthorization The authorization for the adjustment provided by the adjuster.
+     * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param fillBlock The block number to target for the fill (0 allows any block).
      * @param fillHashes An array of the hashes of each fill.
@@ -963,13 +799,9 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @return claimAmounts The amount of tokens to be claimed.
      */
     function _claimAndFill(
-        BatchCompact calldata compact,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
+        BatchClaim calldata claim,
         FillParameters calldata mandate,
-        address adjuster,
         Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
         bytes32 claimant,
         uint256 fillBlock,
         bytes32[] calldata fillHashes
@@ -983,43 +815,34 @@ contract Tribunal is BlockNumberish, ITribunal {
         )
     {
         // Validate fill conditions and derive mandate hash.
-        mandateHash =
-            _validateAndDeriveMandateHash(mandate, adjuster, adjustment, fillBlock, fillHashes);
-
-        // Derive fill and claim amounts.
-        uint256 scalingMultiplier;
-        (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments,
-            mandate.components,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock,
-            mandate.baselinePriorityFee,
-            mandate.scalingFactor
+        mandateHash = _validateAndDeriveMandateHash(
+            mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
         );
 
-        // Execute the claim against The Compact and perform callback to filler.
-        claimHash = _processClaimAndCallback(
-            compact,
-            mandate,
-            sponsorSignature,
-            allocatorSignature,
-            mandateHash,
-            fillAmounts,
-            claimant,
-            claimAmounts
-        );
+        {
+            // Derive fill and claim amounts.
+            uint256 scalingMultiplier;
+            (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
+                claim.compact.commitments, mandate, adjustment, fillBlock
+            );
 
-        // Store the claim reduction scaling factor if claims were reduced
-        if (scalingMultiplier < BASE_SCALING_FACTOR) {
-            _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            // Execute the claim against The Compact and perform callback to filler.
+            claimHash = _processClaimAndCallback(
+                claim, mandate, mandateHash, fillAmounts, claimant, claimAmounts
+            );
+
+            // Store the claim reduction scaling factor if claims were reduced
+            if (scalingMultiplier < BASE_SCALING_FACTOR) {
+                _claimReductionScalingFactors[claimHash] = scalingMultiplier;
+            }
         }
 
         // Verify adjuster authorization.
-        if (!adjuster.isValidSignatureNow(
-                _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
-                adjustmentAuthorization
-            )) {
+        if (!adjustment.adjuster
+                .isValidSignatureNow(
+                    _toAdjustmentHash(adjustment, claimHash).withDomain(_domainSeparator()),
+                    adjustment.adjustmentAuthorization
+                )) {
             revert InvalidAdjustment();
         }
 
@@ -1036,7 +859,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Emit the fill event.
         emit FillWithClaim(
-            compact.sponsor,
+            claim.compact.sponsor,
             claimant,
             claimHash,
             fillRecipients,
@@ -1119,15 +942,17 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     function _processClaimAndCallback(
-        BatchCompact calldata compact,
+        BatchClaim calldata batchClaim,
         FillParameters calldata mandate,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
         bytes32 mandateHash,
         uint256[] memory fillAmounts,
         bytes32 claimant,
         uint256[] memory claimAmounts
     ) internal returns (bytes32 claimHash) {
+        BatchCompact calldata compact = batchClaim.compact;
+        bytes calldata sponsorSignature = batchClaim.sponsorSignature;
+        bytes calldata allocatorSignature = batchClaim.allocatorSignature;
+
         // Claim the tokens to the claimant.
         CompactBatchClaim memory claim;
         BatchClaimComponent memory component;
@@ -1229,29 +1054,220 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
     }
 
+    /**
+     * @notice Prepares ids and amounts array for compact operations.
+     * @param commitment The commitment to prepare.
+     * @return idsAndAmounts The prepared ids and amounts array.
+     * @return callValue The value to send with the call.
+     */
+    function _prepareIdsAndAmounts(Lock calldata commitment)
+        internal
+        returns (uint256[2][] memory idsAndAmounts, uint256 callValue)
+    {
+        idsAndAmounts = new uint256[2][](1);
+        callValue = 0;
+        idsAndAmounts[0][0] =
+            uint256(bytes32(commitment.lockTag)) | uint256(uint160(commitment.token));
+
+        if (commitment.token == address(0)) {
+            // Handle native token
+            callValue = address(this).balance;
+            idsAndAmounts[0][1] = callValue;
+        } else {
+            // Handle ERC20 tokens
+            idsAndAmounts[0][1] = commitment.token.balanceOf(address(this));
+            if (_checkCompactAllowance(commitment.token, address(this)) < idsAndAmounts[0][1]) {
+                SafeTransferLib.safeApproveWithRetry(
+                    commitment.token, address(THE_COMPACT), type(uint256).max
+                );
+            }
+        }
+        return (idsAndAmounts, callValue);
+    }
+
+    /**
+     * @notice Handles transferring tokens to a claimant.
+     * @param commitment The commitment to transfer.
+     * @param claimant The claimant to transfer to.
+     */
+    function _handleClaimantTransfer(Lock calldata commitment, bytes32 claimant) internal {
+        if (commitment.token == address(0)) {
+            // Handle native token
+            SafeTransferLib.safeTransferETH(
+                address(uint160(uint256(claimant))), address(this).balance
+            );
+        } else {
+            // Handle ERC20 tokens
+            commitment.token.safeTransferAll(address(uint160(uint256(claimant))));
+        }
+    }
+
+    /**
+     * @notice Handles direct transfer without lock tags.
+     * @param commitment The commitment to transfer.
+     * @param recipient The recipient address.
+     */
+    function _handleDirectTransfer(Lock calldata commitment, address recipient) internal {
+        if (commitment.token == address(0)) {
+            // Handle native token (transfer full available balance)
+            SafeTransferLib.safeTransferETH(recipient, address(this).balance);
+        } else {
+            // Handle ERC20 tokens (transfer full available balance)
+            commitment.token.safeTransferAll(recipient);
+        }
+    }
+
+    /**
+     * @notice Handles on-chain allocation registration.
+     * @param compact The compact parameters.
+     * @param idsAndAmounts The ids and amounts array.
+     * @param callValue The value to send with the call.
+     * @param mandateHash The mandate hash.
+     * @param context The context data.
+     * @return registeredClaimHash The registered claim hash.
+     */
+    function _handleOnChainAllocation(
+        BatchCompact calldata compact,
+        uint256[2][] memory idsAndAmounts,
+        uint256 callValue,
+        bytes32 mandateHash,
+        bytes calldata context
+    ) internal returns (bytes32 registeredClaimHash) {
+        // Do an on chain allocation if no nonce is provided
+        (, address allocator,,,) = THE_COMPACT.getLockDetails(idsAndAmounts[0][0]);
+
+        // Prepare the allocation with the allocator
+        (uint256 nonce) = IOnChainAllocation(allocator)
+            .prepareAllocation(
+                compact.sponsor,
+                idsAndAmounts,
+                compact.arbiter,
+                compact.expires,
+                COMPACT_TYPEHASH_WITH_MANDATE,
+                mandateHash,
+                context
+            );
+
+        // deposit and register the tokens
+        (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
+            value: callValue
+        }(
+            compact.sponsor,
+            idsAndAmounts,
+            compact.arbiter,
+            nonce,
+            compact.expires,
+            COMPACT_TYPEHASH_WITH_MANDATE,
+            mandateHash
+        );
+
+        // execute the allocation
+        IOnChainAllocation(allocator)
+            .executeAllocation(
+                compact.sponsor,
+                idsAndAmounts, // The allocator will retrieve the actual amounts from the balance change
+                compact.arbiter,
+                compact.expires,
+                COMPACT_TYPEHASH_WITH_MANDATE,
+                mandateHash,
+                context
+            );
+
+        return registeredClaimHash;
+    }
+
+    /**
+     * @notice Handles direct registration without on-chain allocation.
+     * @param compact The compact parameters.
+     * @param idsAndAmounts The ids and amounts array.
+     * @param callValue The value to send with the call.
+     * @param mandateHash The mandate hash.
+     * @return registeredClaimHash The registered claim hash.
+     */
+    function _handleDirectRegistration(
+        BatchCompact calldata compact,
+        uint256[2][] memory idsAndAmounts,
+        uint256 callValue,
+        bytes32 mandateHash
+    ) internal returns (bytes32 registeredClaimHash) {
+        // deposit and register the tokens directly and skip an on chain allocation
+        (registeredClaimHash,) = THE_COMPACT.batchDepositAndRegisterFor{
+            value: callValue
+        }(
+            compact.sponsor,
+            idsAndAmounts,
+            compact.arbiter,
+            compact.nonce,
+            compact.expires,
+            COMPACT_TYPEHASH_WITH_MANDATE,
+            mandateHash
+        );
+        return registeredClaimHash;
+    }
+
+    /**
+     * @notice Internal function to perform a dispatch callback.
+     * @param compact The compact parameters.
+     * @param mandateHash The mandate hash.
+     * @param claimHash The hash of the claim.
+     * @param claimant The claimant bytes32 value.
+     * @param claimAmounts The claim amounts.
+     * @param dispatchParams The dispatch parameters.
+     */
+    function _performDispatchCallback(
+        BatchCompact calldata compact,
+        bytes32 mandateHash,
+        bytes32 claimHash,
+        bytes32 claimant,
+        uint256[] memory claimAmounts,
+        DispatchParameters calldata dispatchParams
+    ) internal {
+        uint256 scalingFactor = _getClaimReductionScalingFactor(claimHash);
+
+        if (
+            IDispatchCallback(dispatchParams.target)
+                .dispatchCallback{
+                    value: dispatchParams.value
+                }(
+                    dispatchParams.chainId,
+                    compact,
+                    mandateHash,
+                    claimHash,
+                    claimant,
+                    scalingFactor,
+                    claimAmounts,
+                    dispatchParams.context
+                ) != IDispatchCallback.dispatchCallback.selector
+        ) {
+            revert InvalidDispatchCallback();
+        }
+
+        emit Dispatch(dispatchParams.target, dispatchParams.chainId, claimant, claimHash);
+
+        // Return any unused native tokens to the caller
+        uint256 remaining = address(this).balance;
+        if (remaining > 0) {
+            msg.sender.safeTransferETH(remaining);
+        }
+    }
+
     // ======== Internal View Functions ========
 
     /**
      * @notice Internal function that derives amounts from components and returns the scaling multiplier.
      * @param maximumClaimAmounts The maximum amounts to claim.
-     * @param components The fill components.
-     * @param priceCurve The price curve to apply.
-     * @param targetBlock The target block number.
+     * @param mandate The fill parameters containing components and scaling info.
+     * @param adjustment The adjustment parameters containing target block and supplemental price curve.
      * @param fillBlock The fill block number.
-     * @param baselinePriorityFee The baseline priority fee.
-     * @param scalingFactor The scaling factor.
      * @return fillAmounts The derived fill amounts for each component.
      * @return claimAmounts The derived claim amounts.
      * @return scalingMultiplier The calculated scaling multiplier.
      */
     function _deriveAmountsFromComponentsWithScaling(
         Lock[] calldata maximumClaimAmounts,
-        FillComponent[] calldata components,
-        uint256[] memory priceCurve,
-        uint256 targetBlock,
-        uint256 fillBlock,
-        uint256 baselinePriorityFee,
-        uint256 scalingFactor
+        FillParameters calldata mandate,
+        Adjustment calldata adjustment,
+        uint256 fillBlock
     )
         internal
         view
@@ -1261,75 +1277,33 @@ contract Tribunal is BlockNumberish, ITribunal {
             uint256 scalingMultiplier
         )
     {
-        fillAmounts = new uint256[](components.length);
+        uint256 baselinePriorityFee = mandate.baselinePriorityFee;
+        uint256 scalingFactor = mandate.scalingFactor;
 
-        // Calculate the common scaling values
-        uint256 currentScalingFactor = BASE_SCALING_FACTOR;
-        if (targetBlock != 0) {
-            if (targetBlock > fillBlock) {
-                revert InvalidTargetBlock(fillBlock, targetBlock);
-            }
-            uint256 blocksPassed;
-            unchecked {
-                blocksPassed = fillBlock - targetBlock;
-            }
-            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
-        } else {
-            if (priceCurve.length != 0) {
-                revert InvalidTargetBlockDesignation();
-            }
-        }
+        // Apply supplemental price curve to mandate price curve
+        uint256[] memory priceCurve =
+            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve);
+        uint256 targetBlock = adjustment.targetBlock;
 
+        // Calculate the current scaling factor from price curve
+        uint256 currentScalingFactor =
+            _calculateCurrentScalingFactor(priceCurve, targetBlock, fillBlock);
+
+        // Validate scaling direction
         if (!scalingFactor.sharesScalingDirection(currentScalingFactor)) {
             revert PriceCurveLib.InvalidPriceCurveParameters();
         }
 
-        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+        // Calculate scaling multiplier and determine mode
+        bool useExactIn;
+        (scalingMultiplier, useExactIn) =
+            _calculateScalingMultiplier(currentScalingFactor, scalingFactor, baselinePriorityFee);
 
-        // Calculate the scaling multiplier
-        bool useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
-        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
-
-        if (useExactIn) {
-            scalingMultiplier = currentScalingFactor
-                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
-        } else {
-            scalingMultiplier = currentScalingFactor
-                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
-
-            // Sanity check: revert if derived scaling factor is zero
-            if (scalingMultiplier == 0) {
-                revert PriceCurveLib.InvalidPriceCurveParameters();
-            }
-        }
-
-        // Calculate fill amounts for each component
-        for (uint256 i = 0; i < components.length; i++) {
-            if (components[i].applyScaling) {
-                if (useExactIn) {
-                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
-                } else {
-                    fillAmounts[i] = components[i].minimumFillAmount;
-                }
-            } else {
-                // If not applying scaling, use the minimum amount as-is
-                fillAmounts[i] = components[i].minimumFillAmount;
-            }
-        }
+        // Calculate fill amounts
+        fillAmounts = _calculateFillAmounts(mandate.components, scalingMultiplier, useExactIn);
 
         // Calculate claim amounts
-        claimAmounts = new uint256[](maximumClaimAmounts.length);
-        if (useExactIn) {
-            // For exact-in, use maximum claim amounts unchanged
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount;
-            }
-        } else {
-            // For exact-out, apply scaling to claim amounts
-            for (uint256 i = 0; i < claimAmounts.length; i++) {
-                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
-            }
-        }
+        claimAmounts = _calculateClaimAmounts(maximumClaimAmounts, scalingMultiplier, useExactIn);
 
         return (fillAmounts, claimAmounts, scalingMultiplier);
     }
@@ -1411,6 +1385,87 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
+     * @notice Calculates the scaling multiplier and determines the mode (exact-in or exact-out).
+     * @param currentScalingFactor The current scaling factor from price curve.
+     * @param scalingFactor The scaling factor parameter.
+     * @param baselinePriorityFee The baseline priority fee.
+     * @return scalingMultiplier The calculated scaling multiplier.
+     * @return useExactIn Whether to use exact-in mode.
+     */
+    function _calculateScalingMultiplier(
+        uint256 currentScalingFactor,
+        uint256 scalingFactor,
+        uint256 baselinePriorityFee
+    ) internal view returns (uint256 scalingMultiplier, bool useExactIn) {
+        uint256 priorityFeeAboveBaseline = _getPriorityFee(baselinePriorityFee);
+
+        useExactIn = (scalingFactor > BASE_SCALING_FACTOR)
+        .or(scalingFactor == BASE_SCALING_FACTOR && currentScalingFactor >= BASE_SCALING_FACTOR);
+
+        if (useExactIn) {
+            scalingMultiplier = currentScalingFactor
+                + ((scalingFactor - BASE_SCALING_FACTOR) * priorityFeeAboveBaseline);
+        } else {
+            scalingMultiplier = currentScalingFactor
+                - ((BASE_SCALING_FACTOR - scalingFactor) * priorityFeeAboveBaseline);
+        }
+
+        return (scalingMultiplier, useExactIn);
+    }
+
+    /**
+     * @notice Calculates fill amounts for each component.
+     * @param components The fill components.
+     * @param scalingMultiplier The scaling multiplier.
+     * @param useExactIn Whether to use exact-in mode.
+     * @return fillAmounts The calculated fill amounts.
+     */
+    function _calculateFillAmounts(
+        FillComponent[] calldata components,
+        uint256 scalingMultiplier,
+        bool useExactIn
+    ) internal pure returns (uint256[] memory fillAmounts) {
+        fillAmounts = new uint256[](components.length);
+        for (uint256 i = 0; i < components.length; i++) {
+            if (components[i].applyScaling) {
+                if (useExactIn) {
+                    fillAmounts[i] = components[i].minimumFillAmount.mulWadUp(scalingMultiplier);
+                } else {
+                    fillAmounts[i] = components[i].minimumFillAmount;
+                }
+            } else {
+                fillAmounts[i] = components[i].minimumFillAmount;
+            }
+        }
+        return fillAmounts;
+    }
+
+    /**
+     * @notice Calculates claim amounts.
+     * @param maximumClaimAmounts The maximum amounts to claim.
+     * @param scalingMultiplier The scaling multiplier.
+     * @param useExactIn Whether to use exact-in mode.
+     * @return claimAmounts The calculated claim amounts.
+     */
+    function _calculateClaimAmounts(
+        Lock[] calldata maximumClaimAmounts,
+        uint256 scalingMultiplier,
+        bool useExactIn
+    ) internal pure returns (uint256[] memory claimAmounts) {
+        claimAmounts = new uint256[](maximumClaimAmounts.length);
+        if (useExactIn) {
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount;
+            }
+        } else {
+            for (uint256 i = 0; i < claimAmounts.length; i++) {
+                claimAmounts[i] = maximumClaimAmounts[i].amount.mulWad(scalingMultiplier);
+            }
+        }
+        return claimAmounts;
+    }
+
+    /**
      * @notice Internal view function to get the claim reduction scaling factor.
      * @param claimHash The hash of the claim.
      * @return scalingFactor The scaling factor (returns 1e18 if not set, 0 if cancelled).
@@ -1431,53 +1486,37 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
     }
 
-    /**
-     * @notice Internal function to perform a dispatch callback.
-     * @param compact The compact parameters.
-     * @param mandateHash The mandate hash.
-     * @param claimHash The hash of the claim.
-     * @param claimant The claimant bytes32 value.
-     * @param claimAmounts The claim amounts.
-     * @param dispatchParams The dispatch parameters.
-     */
-    function _performDispatchCallback(
-        BatchCompact calldata compact,
-        bytes32 mandateHash,
-        bytes32 claimHash,
-        bytes32 claimant,
-        uint256[] memory claimAmounts,
-        DispatchParameters calldata dispatchParams
-    ) internal {
-        uint256 scalingFactor = _getClaimReductionScalingFactor(claimHash);
-
-        if (
-            IDispatchCallback(dispatchParams.target)
-                .dispatchCallback{
-                    value: dispatchParams.value
-                }(
-                    dispatchParams.chainId,
-                    compact,
-                    mandateHash,
-                    claimHash,
-                    claimant,
-                    scalingFactor,
-                    claimAmounts,
-                    dispatchParams.context
-                ) != IDispatchCallback.dispatchCallback.selector
-        ) {
-            revert InvalidDispatchCallback();
-        }
-
-        emit Dispatch(dispatchParams.target, dispatchParams.chainId, claimant, claimHash);
-
-        // Return any unused native tokens to the caller
-        uint256 remaining = address(this).balance;
-        if (remaining > 0) {
-            msg.sender.safeTransferETH(remaining);
-        }
-    }
-
     // ======== Internal Pure Functions ========
+
+    /**
+     * @notice Calculates the current scaling factor from the price curve.
+     * @param priceCurve The price curve to apply.
+     * @param targetBlock The target block number.
+     * @param fillBlock The fill block number.
+     * @return currentScalingFactor The calculated current scaling factor.
+     */
+    function _calculateCurrentScalingFactor(
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock
+    ) internal pure returns (uint256 currentScalingFactor) {
+        currentScalingFactor = BASE_SCALING_FACTOR;
+        if (targetBlock != 0) {
+            if (targetBlock > fillBlock) {
+                revert InvalidTargetBlock(fillBlock, targetBlock);
+            }
+            uint256 blocksPassed;
+            unchecked {
+                blocksPassed = fillBlock - targetBlock;
+            }
+            currentScalingFactor = priceCurve.getCalculatedValues(blocksPassed);
+        } else {
+            if (priceCurve.length != 0) {
+                revert InvalidTargetBlockDesignation();
+            }
+        }
+        return currentScalingFactor;
+    }
 
     /**
      * @notice Derives the claim hash from compact and mandate hash based on a typehash.

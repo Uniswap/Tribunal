@@ -128,11 +128,13 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             commitments: commitments
         });
 
-        Adjustment memory adjustment = Adjustment({
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: 0,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(uint256(uint160(filler)))
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: ""
         });
 
         BatchClaim memory claim = BatchClaim({
@@ -152,16 +154,23 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         token.approve(address(tribunal), type(uint256).max);
 
         // Sign the adjustment properly using EIP-712
-        bytes memory adjustmentAuth = _toAdjustmentSignature(adjustment, compact, mandate);
+        bytes memory adjustmentAuth = _toAdjustmentSignature(adjustmentForSig, compact, mandate);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: 0,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: adjustmentAuth
+        });
 
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
             claim.compact,
             fillData,
-            adjuster,
             adjustment,
-            adjustmentAuth,
             fillHashes,
             bytes32(uint256(uint160(filler))),
             block.number
@@ -219,11 +228,13 @@ contract TribunalClaimReductionScalingFactorTest is Test {
             commitments: commitments
         });
 
-        Adjustment memory adjustment = Adjustment({
+        Adjustment memory adjustmentForSig = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: 0,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(uint256(uint160(filler)))
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: ""
         });
 
         BatchClaim memory claim = BatchClaim({
@@ -243,16 +254,23 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         token.approve(address(tribunal), type(uint256).max);
 
         // Sign the adjustment properly using EIP-712
-        bytes memory adjustmentAuth = _toAdjustmentSignature(adjustment, compact, mandate);
+        bytes memory adjustmentAuth = _toAdjustmentSignature(adjustmentForSig, compact, mandate);
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: 0,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: adjustmentAuth
+        });
 
         // Execute the fill
         vm.prank(filler);
         (bytes32 claimHash,,,) = tribunal.fill(
             claim.compact,
             fillData,
-            adjuster,
             adjustment,
-            adjustmentAuth,
             fillHashes,
             bytes32(uint256(uint160(filler))),
             block.number
@@ -303,10 +321,12 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         });
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: 0,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(uint256(uint160(filler)))
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: ""
         });
 
         BatchClaim memory claim = BatchClaim({
@@ -329,19 +349,13 @@ contract TribunalClaimReductionScalingFactorTest is Test {
         vm.prank(filler);
         token.approve(address(tribunal), type(uint256).max);
 
-        // Sign the adjustment
-        bytes32 adjustmentHash = keccak256(abi.encode(adjustment));
-        bytes memory adjustmentAuth = abi.encodePacked(adjustmentHash);
-
         // Expect revert due to zero scaling factor
         vm.expectRevert();
         vm.prank(filler);
         tribunal.fill(
             claim.compact,
             fillData,
-            adjuster,
             adjustment,
-            adjustmentAuth,
             fillHashes,
             bytes32(uint256(uint160(filler))),
             block.number

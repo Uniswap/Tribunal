@@ -80,7 +80,6 @@ abstract contract MockSetup is Test {
     uint256 targetBlock;
     uint256 sourceChainId;
     address arbiter;
-    ResolvedCrossChainOrder public order;
 
     function setUp() public {
         tribunal = new ERC7683Tribunal();
@@ -93,7 +92,9 @@ abstract contract MockSetup is Test {
         targetBlock = 100;
         arbiter = makeAddr("Arbiter");
         sourceChainId = 1;
+    }
 
+    function _getOrder() internal view returns (ResolvedCrossChainOrder memory) {
         Output memory outputMaxSpent = Output({
             token: bytes32(uint256(uint160(address(token)))),
             amount: type(uint256).max,
@@ -121,7 +122,7 @@ abstract contract MockSetup is Test {
         BatchCompact memory compact = _getBatchCompact();
         Mandate memory mandate = _getMandate();
 
-        order = ResolvedCrossChainOrder({
+        return ResolvedCrossChainOrder({
             user: sponsor,
             originChainId: 1,
             openDeadline: uint32(compact.expires),
@@ -181,10 +182,12 @@ abstract contract MockSetup is Test {
 
     function _getAdjustment() internal view returns (Adjustment memory) {
         return Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: targetBlock,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: "" // Will be set in _getFillerData
         });
     }
 
@@ -194,16 +197,14 @@ abstract contract MockSetup is Test {
         for (uint256 i = 0; i < mandate.fills.length; i++) {
             fillHashes[i] = tribunal.deriveFillHash(mandate.fills[i]);
         }
-        return abi.encode(_getClaim(), mandate.fills[0], mandate.adjuster, fillHashes);
+        return abi.encode(_getClaim(), mandate.fills[0], fillHashes);
     }
 
     function _getFillerData() internal view returns (bytes memory) {
         Adjustment memory adjustment = _getAdjustment();
-        bytes memory adjustmentAuthorization =
+        adjustment.adjustmentAuthorization =
             _toAdjustmentSignature(adjustment, _getBatchCompact(), _getMandate());
-        return abi.encode(
-            adjustment, adjustmentAuthorization, bytes32(uint256(uint160(filler))), targetBlock
-        );
+        return abi.encode(adjustment, bytes32(uint256(uint160(filler))), targetBlock);
     }
 
     function _toAdjustmentHash(
@@ -253,6 +254,7 @@ abstract contract MockSetup is Test {
 
 contract ERC7683Tribunal_Fill is MockSetup {
     function test_revert_InvalidOriginData_InvalidClaimOffset() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Mandate memory mandate = _getMandate();
         bytes32[] memory fillHashes = new bytes32[](mandate.fills.length);
         for (uint256 i = 0; i < mandate.fills.length; i++) {
@@ -267,7 +269,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
             abi.encode(
                 _getClaim(),
                 mandate.fills[0],
-                mandate.adjuster,
                 fillHashes,
                 1 /* invalid input */
             ),
@@ -276,6 +277,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidOriginData_InvlaidLength() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         BatchClaim memory claim = BatchClaim({
             compact: BatchCompact({
                 arbiter: arbiter,
@@ -309,15 +311,18 @@ contract ERC7683Tribunal_Fill is MockSetup {
         bytes32[] memory fillHashes = new bytes32[](1); // minimal length
         fillHashes[0] = tribunal.deriveFillHash(fill);
 
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
+        mandate.fills[0] = fill;
+
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: targetBlock,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
         });
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
-        mandate.fills[0] = fill;
-        bytes memory adjustmentAuthorization =
+        adjustment.adjustmentAuthorization =
             _toAdjustmentSignature(adjustment, claim.compact, mandate);
 
         // Transfer tokens, approval and roll to target block
@@ -330,10 +335,8 @@ contract ERC7683Tribunal_Fill is MockSetup {
         vm.prank(filler);
         tribunal.fill(
             order.orderId,
-            abi.encode(claim, fill, adjuster, fillHashes),
-            abi.encode(
-                adjustment, adjustmentAuthorization, bytes32(uint256(uint160(filler))), targetBlock
-            )
+            abi.encode(claim, fill, fillHashes),
+            abi.encode(adjustment, bytes32(uint256(uint160(filler))), targetBlock)
         );
 
         bytes memory fillerData = _getFillerData();
@@ -345,7 +348,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
             abi.encode(
                 claim,
                 fill,
-                adjuster,
                 new bytes32[](0) /* invalid input - Mandate.fillHashes must be at least length 1 */
             ),
             fillerData
@@ -353,8 +355,9 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidFillerData_InvalidAdjustmentOffset() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Adjustment memory adjustment = _getAdjustment();
-        bytes memory adjustmentAuthorization =
+        adjustment.adjustmentAuthorization =
             _toAdjustmentSignature(adjustment, _getBatchCompact(), _getMandate());
         bytes memory originData = _getOriginData();
 
@@ -364,7 +367,6 @@ contract ERC7683Tribunal_Fill is MockSetup {
             originData,
             abi.encode(
                 adjustment,
-                adjustmentAuthorization,
                 bytes32(uint256(uint160(filler))),
                 targetBlock,
                 1 /* invalid input */
@@ -373,13 +375,15 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_revert_InvalidFillerData_InvalidAdjustmentLength() public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: targetBlock,
             supplementalPriceCurve: new uint256[](0), // minimal length
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
         });
-        bytes memory adjustmentAuthorization = "";
         bytes memory originData = _getOriginData();
 
         vm.roll(targetBlock);
@@ -391,9 +395,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
         tribunal.fill(
             order.orderId,
             originData,
-            abi.encode(
-                adjustment, adjustmentAuthorization, bytes32(uint256(uint160(filler))), targetBlock
-            )
+            abi.encode(adjustment, bytes32(uint256(uint160(filler))), targetBlock)
         );
 
         // Expect a revert
@@ -403,7 +405,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
             originData,
             abi.encode(
                 adjustment,
-                bytes32(0), /* replacing dynamic adjustmentAuthorization with fixed bytes32 */
+                bytes32(0), /* replacing dynamic adjustment with fixed bytes32 */
                 bytes32(uint256(uint160(filler))),
                 targetBlock
             )
@@ -411,6 +413,7 @@ contract ERC7683Tribunal_Fill is MockSetup {
     }
 
     function test_success(address filler_) public {
+        ResolvedCrossChainOrder memory order = _getOrder();
         token.transfer(filler_, minimumFillAmount);
         vm.prank(filler_);
         token.approve(address(tribunal), minimumFillAmount);

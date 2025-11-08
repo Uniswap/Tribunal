@@ -344,10 +344,12 @@ contract PriceCurveEdgeCasesTest is Test {
         bytes32 validityConditions = bytes32(uint256(1) << 160);
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: address(0),
             fillIndex: 0,
             targetBlock: 100,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: validityConditions
+            validityConditions: validityConditions,
+            adjustmentAuthorization: ""
         });
 
         // Should work at exact target block
@@ -430,10 +432,12 @@ contract PriceCurveEdgeCasesTest is Test {
         });
 
         Adjustment memory adjustment = Adjustment({
+            adjuster: address(0),
             fillIndex: 0,
             targetBlock: 100,
             supplementalPriceCurve: new uint256[](1),
-            validityConditions: bytes32(0)
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
         });
         adjustment.supplementalPriceCurve[0] = uint256(1.1e18); // Additional 1.1x
 

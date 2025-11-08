@@ -32,40 +32,29 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             BatchClaim calldata claim,
             FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
-            address adjuster,
             Adjustment calldata adjustment,
-            bytes calldata adjustmentAuthorization,
             bytes32 claimant,
             uint256 fillBlock
         ) = _parseCalldata(originData, fillerData);
 
         _fill(
-            claim.compact,
-            mandate,
-            adjuster,
-            adjustment,
-            adjustmentAuthorization,
-            claimant,
-            _validateFillBlock(fillBlock),
-            fillHashes
+            claim.compact, mandate, adjustment, claimant, _validateFillBlock(fillBlock), fillHashes
         );
     }
 
     /**
      * @notice Encode the filler data for the fill function.
-     * @param adjustment The adjustment struct, including the adjustments to the order.
-     * @param adjustmentAuthorization The adjustment authorization bytes confirming the adjustment.
+     * @param adjustment The adjustment struct, including adjuster, adjustments, and authorization.
      * @param claimant The claimant address that will receive the reward tokens. The first 12 bytes will be as the Lock tag for retrieval instructions.
      * @param fillBlock The fill block at which the filler should be executed.
      * @return fillerData The filler data.
      */
-    function getFillerData(
-        Adjustment calldata adjustment,
-        bytes calldata adjustmentAuthorization,
-        bytes32 claimant,
-        uint256 fillBlock
-    ) external pure returns (bytes memory fillerData) {
-        fillerData = abi.encode(adjustment, adjustmentAuthorization, claimant, fillBlock);
+    function getFillerData(Adjustment calldata adjustment, bytes32 claimant, uint256 fillBlock)
+        external
+        pure
+        returns (bytes memory fillerData)
+    {
+        fillerData = abi.encode(adjustment, claimant, fillBlock);
     }
 
     /**
@@ -75,9 +64,7 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
      * @return claim The Claim struct.
      * @return mandate The Mandate struct.
      * @return fillHashes The fillHashes array.
-     * @return adjuster The adjuster address.
-     * @return adjustment The Adjustment struct.
-     * @return adjustmentAuthorization The adjustmentAuthorization bytes.
+     * @return adjustment The Adjustment struct (includes adjuster and adjustmentAuthorization).
      * @return claimant The claimant address.
      * @return fillBlock The fillBlock.
      */
@@ -88,18 +75,15 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
             BatchClaim calldata claim,
             FillParameters calldata mandate,
             bytes32[] calldata fillHashes,
-            address adjuster,
             Adjustment calldata adjustment,
-            bytes calldata adjustmentAuthorization,
             bytes32 claimant,
             uint256 fillBlock
         )
     {
         /*
-         * Need 30 words in originData at minimum:
+         * Need 27 words in originData at minimum:
          *  - 1 word for offset to claim (dynamic struct).
          *  - 1 word for offset to the main fill (dynamic struct).
-         *  - 1 word for adjuster address.
          *  - 1 word for offset to fillHashes.
          *  - 4 words for fixed claim fields (BatchCompact.arbiter, BatchCompact.sponsor, BatchCompact.nonce, BatchCompact.expires).
          *  - 9 words for fixed mandate fields.
@@ -107,47 +91,51 @@ contract ERC7683Tribunal is Tribunal, IDestinationSettler {
          *  - 5 words for dynamic offsets (BatchCompact.commitments, sponsorSignature, allocatorSignature, Fill.priceCurve and Fill.recipientCallback).
          *  - 5 words for lengths of dynamics (assuming empty).
          *  - 2 words for fillHashes length & at least a single word for fill hash.
-         * Also ensure no funny business with the claim pointer (should be 0x80).
+         * Also ensure no funny business with the claim pointer (should be 0x60).
          *
-         * Need 10 words in fillerData at minimum:
+         * Need 7 words in fillerData at minimum:
          *  - 1 word for offset to adjustment (dynamic struct).
-         *  - 1 word for offset to adjustmentAuthorization.
          *  - 1 word for claimant.
          *  - 1 word for fillBlock.
-         *  - 3 word for fixed adjustment fields (fillIndex, targetBlock, validityConditions).
-         *  - 1 word for supplementalPriceCurve offset.
-         *  - 2 words for adjustmentAuthorization and supplementalPriceCurve length (assuming empty).
-         * Also ensure no funny business with the adjustment pointer (should be 0x80).
+         *  - 4 words for fixed adjustment fields in the struct (adjuster, fillIndex, targetBlock, validityConditions).
+         *  - 2 words for dynamic offsets (supplementalPriceCurve, adjustmentAuthorization).
+         *  - 2 words for supplementalPriceCurve and adjustmentAuthorization length (assuming empty).
+         * Also ensure no funny business with the adjustment pointer (should be 0x60).
          */
         assembly ("memory-safe") {
             if or(
-                or(lt(originData.length, 0x3C0), xor(calldataload(originData.offset), 0x80)),
-                or(lt(fillerData.length, 0x140), xor(calldataload(fillerData.offset), 0x80))
+                or(lt(originData.length, 0x360), xor(calldataload(originData.offset), 0x60)),
+                or(lt(fillerData.length, 0x100), xor(calldataload(fillerData.offset), 0x60))
             ) { revert(0, 0) }
         }
 
-        // Get the claim, fill, adjuster, and fillHashes encoded as bytes arrays with bounds checks from the originData.
-        bytes calldata encodedClaim = LibBytes.dynamicStructInCalldata(originData, 0x00);
-        bytes calldata encodedFill = LibBytes.dynamicStructInCalldata(originData, 0x20);
-        bytes32 encodedAdjuster = LibBytes.loadCalldata(originData, 0x40);
-        bytes calldata encodedFillHashes = LibBytes.bytesInCalldata(originData, 0x60);
+        // Get the claim, fill, and fillHashes encoded as bytes arrays with bounds checks from the originData.
+        {
+            bytes calldata encodedClaim = LibBytes.dynamicStructInCalldata(originData, 0x00);
+            bytes calldata encodedFill = LibBytes.dynamicStructInCalldata(originData, 0x20);
+            assembly ("memory-safe") {
+                claim := encodedClaim.offset
+                mandate := encodedFill.offset
+            }
+        }
 
-        // Get the adjustment, adjustmentAuthorization, claimant and fillBlock encoded as bytes arrays with bounds checks from the fillerData.
+        {
+            bytes calldata encodedFillHashes = LibBytes.bytesInCalldata(originData, 0x40);
+            assembly ("memory-safe") {
+                // originData
+                fillHashes.offset := encodedFillHashes.offset
+                fillHashes.length := encodedFillHashes.length
+            }
+        }
+
+        // Get the adjustment, claimant and fillBlock encoded as bytes arrays with bounds checks from the fillerData.
         bytes calldata encodedAdjustment = LibBytes.dynamicStructInCalldata(fillerData, 0x00);
-        adjustmentAuthorization = LibBytes.bytesInCalldata(fillerData, 0x20);
-        bytes32 encodedClaimant = LibBytes.loadCalldata(fillerData, 0x40);
-        bytes32 encodedFillBlock = LibBytes.loadCalldata(fillerData, 0x60);
+        bytes32 encodedClaimant = LibBytes.loadCalldata(fillerData, 0x20);
+        bytes32 encodedFillBlock = LibBytes.loadCalldata(fillerData, 0x40);
 
         // Extract static structs and other static variables directly.
         // Note: This doesn't sanitize struct elements; that should happen downstream.
         assembly ("memory-safe") {
-            // originData
-            claim := encodedClaim.offset
-            mandate := encodedFill.offset
-            adjuster := shr(0x60, shl(0x60, encodedAdjuster))
-            fillHashes.offset := encodedFillHashes.offset
-            fillHashes.length := encodedFillHashes.length
-
             // fillerData
             adjustment := encodedAdjustment.offset
             claimant := encodedClaimant

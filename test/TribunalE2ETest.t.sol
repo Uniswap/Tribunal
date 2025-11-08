@@ -123,6 +123,16 @@ contract MockBridge {
 }
 
 contract TribunalE2ETest is DeployTheCompact {
+    // Struct to hold addresses for cross-chain operations
+    struct ChainAddresses {
+        address compactAddr;
+        address tribunalChain1Addr;
+        address tokenChain1Addr;
+        address tribunalChain2Addr;
+        address bridgedTokenChain2Addr;
+        address recipientCallbackAddr;
+    }
+
     // Storage for addresses - these survive between tests
     address[] public contractAddresses; // Will store all contract addresses
     uint256[] public snapshots; // Will store snapshot IDs
@@ -157,48 +167,39 @@ contract TribunalE2ETest is DeployTheCompact {
     uint256 constant DEPOSIT_AMOUNT = 100 ether;
     uint256 constant FILL_AMOUNT = 50 ether;
 
-    function setUp() public {
-        // Setup test accounts
-        sponsorKey = 0x1;
-        sponsor = vm.addr(sponsorKey);
-        adjusterKey = 0x2;
-        adjuster = vm.addr(adjusterKey);
-        allocatorKey = 0x3;
-        allocator = vm.addr(allocatorKey);
-        filler = address(0x4);
-        recipient = address(0x5);
-
-        // Take a snapshot of initial state
-        uint256 initialState = vm.snapshot();
-
-        // Deploy on Chain 1
+    function _setupChain1(uint256 initialState)
+        internal
+        returns (address, address, address, uint256, uint96, bytes12)
+    {
         vm.chainId(CHAIN_1);
         TheCompact theCompactChain1 = deployTheCompact();
         Tribunal tribunalChain1Temp = new Tribunal{salt: 0}();
         MockERC20 tokenChain1Temp = new MockERC20();
 
-        // Transfer tokens to sponsor (MockERC20 mints to deployer)
         vm.prank(address(this));
         tokenChain1Temp.transfer(sponsor, INITIAL_BALANCE);
 
-        // Register allocator on Chain 1
         vm.prank(allocator);
         uint96 allocatorIdChain1Temp = theCompactChain1.__registerAllocator(allocator, "");
-
-        // Construct lock tag for Chain 1: scope (2 bytes) + resetPeriod (4 bytes) + allocatorId (6 bytes) = 12 bytes
-        // Using scope 0, resetPeriod 0, and the allocatorId we just registered
         bytes12 lockTagChain1Temp = bytes12(uint96(allocatorIdChain1Temp));
 
-        // Store Chain 1 addresses before reverting (as raw addresses, not contract types)
-        address theCompactChain1Addr = address(theCompactChain1);
-        address tribunalChain1Addr = address(tribunalChain1Temp);
-        address tokenChain1Addr = address(tokenChain1Temp);
-
-        // Take snapshot of chain 1
         uint256 chain1SnapshotId = vm.snapshot();
         vm.revertTo(initialState);
 
-        // Deploy on Chain 2
+        return (
+            address(theCompactChain1),
+            address(tribunalChain1Temp),
+            address(tokenChain1Temp),
+            chain1SnapshotId,
+            allocatorIdChain1Temp,
+            lockTagChain1Temp
+        );
+    }
+
+    function _setupChain2(address theCompactChain1Addr)
+        internal
+        returns (address, address, address, address, uint256, uint96, bytes12)
+    {
         vm.chainId(CHAIN_2);
 
         TheCompact theCompactChain2 = deployTheCompact();
@@ -209,18 +210,12 @@ contract TribunalE2ETest is DeployTheCompact {
             salt: 0
         }(payable(address(tribunalChain2Temp)), address(bridgedTokenChain2Temp));
 
-        // Grant bridge role to the bridge and to this test contract (for setup)
         bridgedTokenChain2Temp.grantBridgeRole(address(bridgeTemp));
         bridgedTokenChain2Temp.grantBridgeRole(address(this));
-
-        // Give filler some tokens on chain 2
         bridgedTokenChain2Temp.bridgeMint(filler, INITIAL_BALANCE);
 
-        // Register allocator on Chain 2 (might get different ID since it's a separate deployment)
         vm.prank(allocator);
         uint96 allocatorIdChain2Temp = theCompactChain2.__registerAllocator(allocator, "");
-
-        // Construct lock tag for Chain 2
         bytes12 lockTagChain2Temp = bytes12(uint96(allocatorIdChain2Temp));
 
         require(
@@ -228,16 +223,50 @@ contract TribunalE2ETest is DeployTheCompact {
             "deployment address for The Compact differs across chains"
         );
 
-        // Store Chain 2 addresses before taking snapshot (as raw addresses)
-        address tribunalChain2Addr = address(tribunalChain2Temp);
-        address bridgedTokenChain2Addr = address(bridgedTokenChain2Temp);
-        address recipientCallbackAddr = address(recipientCallbackTemp);
-        address bridgeAddr = address(bridgeTemp);
-
-        // Take snapshot of chain 2
         uint256 chain2SnapshotId = vm.snapshot();
 
-        // Store all addresses and data in storage arrays
+        return (
+            address(tribunalChain2Temp),
+            address(bridgedTokenChain2Temp),
+            address(recipientCallbackTemp),
+            address(bridgeTemp),
+            chain2SnapshotId,
+            allocatorIdChain2Temp,
+            lockTagChain2Temp
+        );
+    }
+
+    function setUp() public {
+        sponsorKey = 0x1;
+        sponsor = vm.addr(sponsorKey);
+        adjusterKey = 0x2;
+        adjuster = vm.addr(adjusterKey);
+        allocatorKey = 0x3;
+        allocator = vm.addr(allocatorKey);
+        filler = address(0x4);
+        recipient = address(0x5);
+
+        uint256 initialState = vm.snapshot();
+
+        (
+            address theCompactChain1Addr,
+            address tribunalChain1Addr,
+            address tokenChain1Addr,
+            uint256 chain1SnapshotId,
+            uint96 allocatorIdChain1,
+            bytes12 lockTagChain1
+        ) = _setupChain1(initialState);
+
+        (
+            address tribunalChain2Addr,
+            address bridgedTokenChain2Addr,
+            address recipientCallbackAddr,
+            address bridgeAddr,
+            uint256 chain2SnapshotId,
+            uint96 allocatorIdChain2,
+            bytes12 lockTagChain2
+        ) = _setupChain2(theCompactChain1Addr);
+
         contractAddresses = new address[](7);
         contractAddresses[COMPACT_ADDR] = theCompactChain1Addr;
         contractAddresses[TRIBUNAL_CHAIN1_ADDR] = tribunalChain1Addr;
@@ -252,12 +281,12 @@ contract TribunalE2ETest is DeployTheCompact {
         snapshots[1] = chain2SnapshotId;
 
         allocatorIds = new uint96[](2);
-        allocatorIds[0] = allocatorIdChain1Temp;
-        allocatorIds[1] = allocatorIdChain2Temp;
+        allocatorIds[0] = allocatorIdChain1;
+        allocatorIds[1] = allocatorIdChain2;
 
         lockTags = new bytes12[](2);
-        lockTags[0] = lockTagChain1Temp;
-        lockTags[1] = lockTagChain2Temp;
+        lockTags[0] = lockTagChain1;
+        lockTags[1] = lockTagChain2;
     }
 
     function switchToChain1(uint256 chain1Snapshot, uint256 chain2Snapshot)
@@ -286,44 +315,20 @@ contract TribunalE2ETest is DeployTheCompact {
         return (chain1Snapshot, chain2Snapshot);
     }
 
-    function testE2ECrossChainFill() public {
-        // Load all addresses and data from storage into memory
-        TheCompact theCompact = TheCompact(contractAddresses[COMPACT_ADDR]);
-        Tribunal tribunalChain1 = Tribunal(payable(contractAddresses[TRIBUNAL_CHAIN1_ADDR]));
-        MockERC20 tokenChain1 = MockERC20(contractAddresses[TOKEN_CHAIN1_ADDR]);
-        Tribunal tribunalChain2 = Tribunal(payable(contractAddresses[TRIBUNAL_CHAIN2_ADDR]));
-        BridgedToken bridgedTokenChain2 = BridgedToken(contractAddresses[BRIDGED_TOKEN_CHAIN2_ADDR]);
-        TestRecipientCallback recipientCallback =
-            TestRecipientCallback(contractAddresses[RECIPIENT_CALLBACK_ADDR]);
-
-        uint256 chain1SnapshotId = snapshots[0];
-        uint256 chain2SnapshotId = snapshots[1];
-
-        bytes12 lockTagChain1 = lockTags[0];
-
-        // Switch to Chain 1
-        (chain1SnapshotId, chain2SnapshotId) = switchToChain1(chain1SnapshotId, chain2SnapshotId);
-
-        // Prepare compact parameters
-        Lock[] memory commitments = new Lock[](1);
-        commitments[0] =
-            Lock({lockTag: lockTagChain1, token: address(tokenChain1), amount: DEPOSIT_AMOUNT});
-
-        BatchCompact memory compact = BatchCompact({
-            arbiter: address(0),
-            sponsor: sponsor,
-            nonce: 1,
-            expires: block.timestamp + 1 days,
-            commitments: commitments
-        });
-
-        // Create fills array (cross-chain fill and same-chain fallback)
-        FillParameters[] memory fills = new FillParameters[](2);
+    function _createCompactAndFills(
+        BatchCompact memory compact,
+        address tokenChain1Addr,
+        address tribunalChain1Addr,
+        address tribunalChain2Addr,
+        address bridgedTokenChain2Addr,
+        address recipientCallbackAddr
+    ) internal view returns (FillParameters[] memory fills) {
+        fills = new FillParameters[](2);
 
         // Cross-chain fill (Chain 2)
         FillComponent[] memory components0 = new FillComponent[](1);
         components0[0] = FillComponent({
-            fillToken: address(bridgedTokenChain2),
+            fillToken: bridgedTokenChain2Addr,
             minimumFillAmount: FILL_AMOUNT,
             recipient: recipient,
             applyScaling: false
@@ -331,11 +336,11 @@ contract TribunalE2ETest is DeployTheCompact {
 
         fills[0] = FillParameters({
             chainId: CHAIN_2,
-            tribunal: address(tribunalChain2),
+            tribunal: tribunalChain2Addr,
             expires: block.timestamp + 1 hours,
             components: components0,
             baselinePriorityFee: 1 gwei,
-            scalingFactor: 1e18, // No scaling
+            scalingFactor: 1e18,
             priceCurve: new uint256[](0),
             recipientCallback: new RecipientCallback[](0),
             salt: bytes32(uint256(1))
@@ -346,21 +351,21 @@ contract TribunalE2ETest is DeployTheCompact {
         callbacks[0] = RecipientCallback({
             chainId: CHAIN_2,
             compact: compact,
-            mandateHash: bytes32(0), // Will be filled later
+            mandateHash: bytes32(0),
             context: abi.encode("test context")
         });
 
         FillComponent[] memory components1 = new FillComponent[](1);
         components1[0] = FillComponent({
-            fillToken: address(tokenChain1),
+            fillToken: tokenChain1Addr,
             minimumFillAmount: FILL_AMOUNT,
-            recipient: address(recipientCallback),
+            recipient: recipientCallbackAddr,
             applyScaling: false
         });
 
         fills[1] = FillParameters({
             chainId: CHAIN_1,
-            tribunal: address(tribunalChain1),
+            tribunal: tribunalChain1Addr,
             expires: block.timestamp + 2 hours,
             components: components1,
             baselinePriorityFee: 1 gwei,
@@ -369,38 +374,42 @@ contract TribunalE2ETest is DeployTheCompact {
             recipientCallback: callbacks,
             salt: bytes32(uint256(2))
         });
+    }
 
-        // Calculate fill hashes on their respective chains
-        bytes32[] memory fillHashes = new bytes32[](2);
+    function _computeFillHashesAcrossChains(
+        FillParameters[] memory fills,
+        address tribunalChain1Addr,
+        address tribunalChain2Addr,
+        uint256 chain1Snap,
+        uint256 chain2Snap
+    ) internal returns (bytes32[] memory fillHashes, uint256, uint256) {
+        fillHashes = new bytes32[](2);
 
         // Get hash for fills[1] on current chain (CHAIN_1)
-        fillHashes[1] = tribunalChain1.deriveFillHash(fills[1]);
+        fillHashes[1] = Tribunal(payable(tribunalChain1Addr)).deriveFillHash(fills[1]);
 
         // Switch to CHAIN_2 to get hash for fills[0]
-        (chain1SnapshotId, chain2SnapshotId) = switchToChain2(chain1SnapshotId, chain2SnapshotId);
-        fillHashes[0] = tribunalChain2.deriveFillHash(fills[0]);
-        (chain1SnapshotId, chain2SnapshotId) = switchToChain1(chain1SnapshotId, chain2SnapshotId);
+        (chain1Snap, chain2Snap) = switchToChain2(chain1Snap, chain2Snap);
+        fillHashes[0] = Tribunal(payable(tribunalChain2Addr)).deriveFillHash(fills[0]);
+        (chain1Snap, chain2Snap) = switchToChain1(chain1Snap, chain2Snap);
 
-        // Calculate mandate hash
-        bytes32 mandateHash = keccak256(
-            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
-        );
+        return (fillHashes, chain1Snap, chain2Snap);
+    }
 
-        // Sponsor deposits and registers on Chain 1
-        vm.startPrank(sponsor);
-        tokenChain1.approve(address(theCompact), DEPOSIT_AMOUNT);
-
-        bytes32 claimHash = tribunalChain1.deriveClaimHash(compact, mandateHash);
-
-        // Adjuster signs adjustment for cross-chain fill
-        Adjustment memory adjustment = Adjustment({
+    function _createAndSignAdjustment(bytes32 claimHash, address tribunalChain2Addr)
+        internal
+        view
+        returns (Adjustment memory adjustment, bytes memory adjustmentSignature)
+    {
+        adjustment = Adjustment({
+            adjuster: adjuster,
             fillIndex: 0,
             targetBlock: block.number,
             supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(uint256(uint160(filler)))
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: ""
         });
 
-        // Generate adjustment signature for verification on Chain 2
         bytes32 adjustmentHash = keccak256(
             abi.encode(
                 ADJUSTMENT_TYPEHASH,
@@ -412,47 +421,151 @@ contract TribunalE2ETest is DeployTheCompact {
             )
         );
 
-        // The domain separator should be for Chain 2 where the signature will be verified
-        bytes32 domainSeparator = _computeDomainSeparator(CHAIN_2, address(tribunalChain2));
+        bytes32 domainSeparator = _computeDomainSeparator(CHAIN_2, tribunalChain2Addr);
         bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterKey, digest);
-        bytes memory adjustmentSignature = abi.encodePacked(r, s, v);
+        adjustmentSignature = abi.encodePacked(r, s, v);
+    }
 
-        vm.stopPrank();
-
+    function _executeChain2Fill(
+        BatchCompact memory compact,
+        FillParameters[] memory fills,
+        Adjustment memory adjustment,
+        bytes memory adjustmentSignature,
+        ChainAddresses memory addrs,
+        uint256 chain1Snap,
+        uint256 chain2Snap
+    ) internal returns (uint256, uint256) {
+        // Prepare fill hashes for execution
         bytes32[] memory fillHashesForExecution = new bytes32[](2);
-        fillHashesForExecution[1] = tribunalChain1.deriveFillHash(fills[1]);
+        fillHashesForExecution[1] =
+            Tribunal(payable(addrs.tribunalChain1Addr)).deriveFillHash(fills[1]);
 
-        // Switch to Chain 2 and execute cross-chain fill
-        (chain1SnapshotId, chain2SnapshotId) = switchToChain2(chain1SnapshotId, chain2SnapshotId);
+        // Switch to Chain 2 and execute
+        (chain1Snap, chain2Snap) = switchToChain2(chain1Snap, chain2Snap);
 
+        Tribunal tribunalChain2 = Tribunal(payable(addrs.tribunalChain2Addr));
         fillHashesForExecution[0] = tribunalChain2.deriveFillHash(fills[0]);
 
-        // Set up the filler's approval
         vm.startPrank(filler);
-        bridgedTokenChain2.approve(address(tribunalChain2), FILL_AMOUNT);
+        BridgedToken(addrs.bridgedTokenChain2Addr).approve(address(tribunalChain2), FILL_AMOUNT);
 
-        // Create batch claim for Chain 2
-        BatchClaim memory batchClaim =
-            BatchClaim({compact: compact, sponsorSignature: "", allocatorSignature: ""});
+        adjustment.adjustmentAuthorization = adjustmentSignature;
 
-        // Execute the cross-chain fill
         (bytes32 returnedClaimHash,, uint256[] memory fillAmounts,) = tribunalChain2.fill(
-            batchClaim.compact,
+            compact,
             fills[0],
-            adjuster,
             adjustment,
-            adjustmentSignature,
             fillHashesForExecution,
             bytes32(uint256(uint160(filler))),
             0
         );
-
         vm.stopPrank();
 
-        // Verify the fill was recorded
+        // Verify
         assertEq(tribunalChain2.filled(returnedClaimHash), bytes32(uint256(uint160(filler))));
         assertEq(fillAmounts[0], FILL_AMOUNT);
+
+        return (chain1Snap, chain2Snap);
+    }
+
+    function _prepareCompactAndFills(ChainAddresses memory addrs, bytes12 lockTag0)
+        internal
+        view
+        returns (BatchCompact memory compact, FillParameters[] memory fills)
+    {
+        // Prepare compact
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] =
+            Lock({lockTag: lockTag0, token: addrs.tokenChain1Addr, amount: DEPOSIT_AMOUNT});
+
+        compact = BatchCompact({
+            arbiter: address(0),
+            sponsor: sponsor,
+            nonce: 1,
+            expires: block.timestamp + 1 days,
+            commitments: commitments
+        });
+
+        // Create fills
+        fills = _createCompactAndFills(
+            compact,
+            addrs.tokenChain1Addr,
+            addrs.tribunalChain1Addr,
+            addrs.tribunalChain2Addr,
+            addrs.bridgedTokenChain2Addr,
+            addrs.recipientCallbackAddr
+        );
+    }
+
+    function _prepareMandateAndApproval(
+        BatchCompact memory compact,
+        FillParameters[] memory fills,
+        ChainAddresses memory addrs,
+        uint256 chain1Snap,
+        uint256 chain2Snap
+    ) internal returns (bytes32 claimHash, bytes32 mandateHash, uint256, uint256) {
+        // Calculate fill hashes
+        bytes32[] memory fillHashes;
+        (fillHashes, chain1Snap, chain2Snap) = _computeFillHashesAcrossChains(
+            fills, addrs.tribunalChain1Addr, addrs.tribunalChain2Addr, chain1Snap, chain2Snap
+        );
+
+        // Calculate mandate hash
+        mandateHash = keccak256(
+            abi.encode(MANDATE_TYPEHASH, adjuster, keccak256(abi.encodePacked(fillHashes)))
+        );
+
+        // Sponsor approves
+        vm.prank(sponsor);
+        MockERC20(addrs.tokenChain1Addr).approve(addrs.compactAddr, DEPOSIT_AMOUNT);
+
+        claimHash =
+            Tribunal(payable(addrs.tribunalChain1Addr)).deriveClaimHash(compact, mandateHash);
+
+        return (claimHash, mandateHash, chain1Snap, chain2Snap);
+    }
+
+    function testE2ECrossChainFill() public {
+        // Load addresses and data first before any snapshot manipulation
+        ChainAddresses memory addrs = ChainAddresses({
+            compactAddr: contractAddresses[COMPACT_ADDR],
+            tribunalChain1Addr: contractAddresses[TRIBUNAL_CHAIN1_ADDR],
+            tokenChain1Addr: contractAddresses[TOKEN_CHAIN1_ADDR],
+            tribunalChain2Addr: contractAddresses[TRIBUNAL_CHAIN2_ADDR],
+            bridgedTokenChain2Addr: contractAddresses[BRIDGED_TOKEN_CHAIN2_ADDR],
+            recipientCallbackAddr: contractAddresses[RECIPIENT_CALLBACK_ADDR]
+        });
+        bytes12 lockTag0 = lockTags[0];
+
+        uint256 chain1SnapshotId = snapshots[0];
+        uint256 chain2SnapshotId = snapshots[1];
+
+        // Switch to Chain 1
+        (chain1SnapshotId, chain2SnapshotId) = switchToChain1(chain1SnapshotId, chain2SnapshotId);
+
+        // Prepare compact and fills
+        (BatchCompact memory compact, FillParameters[] memory fills) =
+            _prepareCompactAndFills(addrs, lockTag0);
+
+        // Prepare mandate and approval
+        bytes32 claimHash;
+        (claimHash,, chain1SnapshotId, chain2SnapshotId) =
+            _prepareMandateAndApproval(compact, fills, addrs, chain1SnapshotId, chain2SnapshotId);
+
+        // Create and sign adjustment, then execute
+        (Adjustment memory adjustment, bytes memory adjustmentSignature) =
+            _createAndSignAdjustment(claimHash, addrs.tribunalChain2Addr);
+
+        _executeChain2Fill(
+            compact,
+            fills,
+            adjustment,
+            adjustmentSignature,
+            addrs,
+            chain1SnapshotId,
+            chain2SnapshotId
+        );
     }
 
     function testBridgeAndSettle() public {
