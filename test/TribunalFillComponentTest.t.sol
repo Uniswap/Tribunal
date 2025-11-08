@@ -313,34 +313,48 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
             salt: bytes32(uint256(1))
         });
 
-        (
-            BatchClaim memory claim,
-            Adjustment memory adjustment,
-            bytes32 claimHash,
-            bytes32[] memory fillHashes
-        ) = _createClaimAndAdjustment(fill);
+        BatchClaim memory claim;
+        Adjustment memory adjustment;
+        bytes32 claimHash;
+        bytes32[] memory fillHashes;
+
+        {
+            (
+                BatchClaim memory _claim,
+                Adjustment memory _adjustment,
+                bytes32 _claimHash,
+                bytes32[] memory _fillHashes
+            ) = _createClaimAndAdjustment(fill);
+
+            claim = _claim;
+            adjustment = _adjustment;
+            claimHash = _claimHash;
+            fillHashes = _fillHashes;
+        }
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
 
-        // Expect the event with all three recipients
-        FillRecipient[] memory expectedFillRecipients = new FillRecipient[](3);
-        expectedFillRecipients[0] = FillRecipient({fillAmount: 100e18, recipient: recipient1});
-        expectedFillRecipients[1] = FillRecipient({fillAmount: 50e18, recipient: recipient2});
-        expectedFillRecipients[2] = FillRecipient({fillAmount: 75e18, recipient: recipient3});
+        {
+            // Expect the event with all three recipients
+            FillRecipient[] memory expectedFillRecipients = new FillRecipient[](3);
+            expectedFillRecipients[0] = FillRecipient({fillAmount: 100e18, recipient: recipient1});
+            expectedFillRecipients[1] = FillRecipient({fillAmount: 50e18, recipient: recipient2});
+            expectedFillRecipients[2] = FillRecipient({fillAmount: 75e18, recipient: recipient3});
 
-        uint256[] memory expectedClaimAmounts = new uint256[](1);
-        expectedClaimAmounts[0] = 225e18;
+            uint256[] memory expectedClaimAmounts = new uint256[](1);
+            expectedClaimAmounts[0] = 225e18;
 
-        vm.expectEmit(true, true, false, true);
-        emit FillWithClaim(
-            sponsor,
-            bytes32(uint256(uint160(address(filler)))),
-            claimHash,
-            expectedFillRecipients,
-            expectedClaimAmounts,
-            vm.getBlockNumber()
-        );
+            vm.expectEmit(true, true, false, true);
+            emit FillWithClaim(
+                sponsor,
+                bytes32(uint256(uint160(address(filler)))),
+                claimHash,
+                expectedFillRecipients,
+                expectedClaimAmounts,
+                vm.getBlockNumber()
+            );
+        }
 
         vm.prank(address(filler));
         tribunal.claimAndFill(
@@ -596,37 +610,48 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
     function test_DuplicateTokenRecipientPairDoesDoubleTransfer() public {
         address recipient = address(0xBEEF);
 
-        (FillParameters memory fill, BatchClaim memory claim, bytes32[] memory fillHashes) =
-            _setupDuplicateRecipientTest(recipient);
+        FillParameters memory fill;
+        BatchClaim memory claim;
+        bytes32[] memory fillHashes;
 
-        // Create mandate with the actual fill
-        bytes32 claimHash;
         {
+            (FillParameters memory _fill, BatchClaim memory _claim, bytes32[] memory _fillHashes) =
+                _setupDuplicateRecipientTest(recipient);
+            fill = _fill;
+            claim = _claim;
+            fillHashes = _fillHashes;
+        }
+
+        bytes32 claimHash;
+        Adjustment memory adjustment;
+
+        {
+            // Create mandate with the actual fill
             FillParameters[] memory fills = new FillParameters[](1);
             fills[0] = fill;
             Mandate memory mandate = Mandate({adjuster: adjuster, fills: fills});
             bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
             claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
-        }
 
-        Adjustment memory adjustment = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: vm.getBlockNumber(),
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: _signAdjustment(
-                claimHash,
-                Adjustment({
-                    adjuster: adjuster,
-                    fillIndex: 0,
-                    targetBlock: vm.getBlockNumber(),
-                    supplementalPriceCurve: new uint256[](0),
-                    validityConditions: bytes32(0),
-                    adjustmentAuthorization: ""
-                })
-            )
-        });
+            adjustment = Adjustment({
+                adjuster: adjuster,
+                fillIndex: 0,
+                targetBlock: vm.getBlockNumber(),
+                supplementalPriceCurve: new uint256[](0),
+                validityConditions: bytes32(0),
+                adjustmentAuthorization: _signAdjustment(
+                    claimHash,
+                    Adjustment({
+                        adjuster: adjuster,
+                        fillIndex: 0,
+                        targetBlock: vm.getBlockNumber(),
+                        supplementalPriceCurve: new uint256[](0),
+                        validityConditions: bytes32(0),
+                        adjustmentAuthorization: ""
+                    })
+                )
+            });
+        }
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
@@ -653,123 +678,140 @@ contract TribunalFillComponentTest is DeployTheCompact, ITribunalCallback {
         address recipient1 = address(0xBEEF);
         address recipient2 = address(0xCAFE);
 
-        // Deposit tokens to TheCompact for the sponsor (more than filler will provide)
-        uint256 depositAmount = 200e18;
-        token1.transfer(sponsor, depositAmount);
+        FillParameters memory fill;
+        BatchClaim memory claim;
+        bytes32[] memory fillHashes;
+        bytes32 claimHash;
+        uint256 targetBlock;
 
-        vm.startPrank(sponsor);
-        token1.approve(address(compactContract), depositAmount);
-        compactContract.depositERC20(
-            address(token1), bytes12(uint96(allocatorId)), depositAmount, sponsor
-        );
-        vm.stopPrank();
+        {
+            // Deposit tokens to TheCompact for the sponsor (more than filler will provide)
+            uint256 depositAmount = 200e18;
+            token1.transfer(sponsor, depositAmount);
 
-        // Create components: one with scaling, one without
-        FillComponent[] memory components = new FillComponent[](2);
-        components[0] = FillComponent({
-            fillToken: address(token1),
-            minimumFillAmount: 100e18,
-            recipient: recipient1,
-            applyScaling: true // In exact-out, this doesn't scale fill amount
-        });
-        components[1] = FillComponent({
-            fillToken: address(token1),
-            minimumFillAmount: 50e18,
-            recipient: recipient2,
-            applyScaling: false // This also doesn't scale fill amount
-        });
+            vm.startPrank(sponsor);
+            token1.approve(address(compactContract), depositAmount);
+            compactContract.depositERC20(
+                address(token1), bytes12(uint96(allocatorId)), depositAmount, sponsor
+            );
+            vm.stopPrank();
 
-        // Reverse dutch auction: starts at 0.8x, ends at 1e18 over 10 blocks
-        uint256[] memory priceCurve = new uint256[](1);
-        priceCurve[0] = (10 << 240) | uint256(8e17);
+            // Create components: one with scaling, one without
+            FillComponent[] memory components = new FillComponent[](2);
+            components[0] = FillComponent({
+                fillToken: address(token1),
+                minimumFillAmount: 100e18,
+                recipient: recipient1,
+                applyScaling: true // In exact-out, this doesn't scale fill amount
+            });
+            components[1] = FillComponent({
+                fillToken: address(token1),
+                minimumFillAmount: 50e18,
+                recipient: recipient2,
+                applyScaling: false // This also doesn't scale fill amount
+            });
 
-        // Use exact-out mode (scalingFactor < 1e18) with a less aggressive scaling factor
-        // to avoid underflow when combined with priority fees
-        FillParameters memory fill = FillParameters({
-            chainId: block.chainid,
-            tribunal: address(tribunal),
-            expires: uint256(block.timestamp + 1),
-            components: components,
-            baselinePriorityFee: 100 gwei,
-            scalingFactor: 999999999900000000, // Just slightly below 1e18 for exact-out mode
-            priceCurve: priceCurve,
-            recipientCallback: new RecipientCallback[](0),
-            salt: bytes32(uint256(1))
-        });
+            // Reverse dutch auction: starts at 0.8x, ends at 1e18 over 10 blocks
+            uint256[] memory priceCurve = new uint256[](1);
+            priceCurve[0] = (10 << 240) | uint256(8e17);
 
-        Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
-        mandate.fills[0] = fill;
+            // Use exact-out mode (scalingFactor < 1e18) with a less aggressive scaling factor
+            // to avoid underflow when combined with priority fees
+            fill = FillParameters({
+                chainId: block.chainid,
+                tribunal: address(tribunal),
+                expires: uint256(block.timestamp + 1),
+                components: components,
+                baselinePriorityFee: 100 gwei,
+                scalingFactor: 999999999900000000, // Just slightly below 1e18 for exact-out mode
+                priceCurve: priceCurve,
+                recipientCallback: new RecipientCallback[](0),
+                salt: bytes32(uint256(1))
+            });
 
-        Lock[] memory commitments = new Lock[](1);
-        commitments[0] =
-            Lock({lockTag: bytes12(uint96(allocatorId)), token: address(token1), amount: 200e18});
+            Mandate memory mandate = Mandate({adjuster: adjuster, fills: new FillParameters[](1)});
+            mandate.fills[0] = fill;
 
-        bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+            Lock[] memory commitments = new Lock[](1);
+            commitments[0] = Lock({
+                lockTag: bytes12(uint96(allocatorId)), token: address(token1), amount: 200e18
+            });
 
-        bytes memory sponsorSig = _generateSponsorSignature(
-            BatchCompact({
-                arbiter: address(tribunal),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            mandateHash
-        );
+            bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
 
-        BatchClaim memory claim = BatchClaim({
-            compact: BatchCompact({
-                arbiter: address(tribunal),
-                sponsor: sponsor,
-                nonce: 0,
-                expires: block.timestamp + 1 hours,
-                commitments: commitments
-            }),
-            sponsorSignature: sponsorSig,
-            allocatorSignature: new bytes(0)
-        });
+            bytes memory sponsorSig = _generateSponsorSignature(
+                BatchCompact({
+                    arbiter: address(tribunal),
+                    sponsor: sponsor,
+                    nonce: 0,
+                    expires: block.timestamp + 1 hours,
+                    commitments: commitments
+                }),
+                mandateHash
+            );
 
-        uint256 targetBlock = vm.getBlockNumber();
+            claim = BatchClaim({
+                compact: BatchCompact({
+                    arbiter: address(tribunal),
+                    sponsor: sponsor,
+                    nonce: 0,
+                    expires: block.timestamp + 1 hours,
+                    commitments: commitments
+                }),
+                sponsorSignature: sponsorSig,
+                allocatorSignature: new bytes(0)
+            });
 
-        // Fill 5 blocks into the auction (halfway through 10-block curve)
-        vm.roll(targetBlock + 5);
+            targetBlock = vm.getBlockNumber();
 
-        // Set priority fee 5 gwei above baseline
-        vm.fee(1 gwei);
-        vm.txGasPrice(1 gwei + 100 gwei + 5 gwei);
+            // Fill 5 blocks into the auction (halfway through 10-block curve)
+            vm.roll(targetBlock + 5);
 
-        bytes32[] memory fillHashes = new bytes32[](1);
-        fillHashes[0] = tribunal.deriveFillHash(fill);
+            // Set priority fee 5 gwei above baseline
+            vm.fee(1 gwei);
+            vm.txGasPrice(1 gwei + 100 gwei + 5 gwei);
 
-        bytes32 claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+            fillHashes = new bytes32[](1);
+            fillHashes[0] = tribunal.deriveFillHash(fill);
 
-        Adjustment memory adjustmentForSig = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: targetBlock,
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: ""
-        });
+            claimHash = tribunal.deriveClaimHash(claim.compact, mandateHash);
+        }
 
-        bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+        Adjustment memory adjustment;
+        {
+            Adjustment memory adjustmentForSig = Adjustment({
+                adjuster: adjuster,
+                fillIndex: 0,
+                targetBlock: targetBlock,
+                supplementalPriceCurve: new uint256[](0),
+                validityConditions: bytes32(0),
+                adjustmentAuthorization: ""
+            });
 
-        Adjustment memory adjustment = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: targetBlock,
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: adjustmentSignature
-        });
+            bytes memory adjustmentSignature = _signAdjustment(claimHash, adjustmentForSig);
+
+            adjustment = Adjustment({
+                adjuster: adjuster,
+                fillIndex: 0,
+                targetBlock: targetBlock,
+                supplementalPriceCurve: new uint256[](0),
+                validityConditions: bytes32(0),
+                adjustmentAuthorization: adjustmentSignature
+            });
+        }
 
         vm.prank(address(filler));
         token1.approve(address(tribunal), type(uint256).max);
 
-        vm.prank(address(filler));
-        (,, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = tribunal.claimAndFill(
-            claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
-        );
+        uint256[] memory fillAmounts;
+        uint256[] memory claimAmounts;
+
+        {
+            vm.prank(address(filler));
+            (,, fillAmounts, claimAmounts) = tribunal.claimAndFill(
+                claim, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(filler)))), 0
+            );
+        }
 
         // In exact-out mode, BOTH components stay at their minimum fill amounts
         // regardless of the applyScaling flag
