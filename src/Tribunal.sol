@@ -819,24 +819,15 @@ contract Tribunal is BlockNumberish, ITribunal {
             mandate, adjustment.adjuster, adjustment, fillBlock, fillHashes
         );
 
-        BatchCompact calldata compact = claim.compact;
-
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
         (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments, mandate, adjustment, fillBlock
+            claim.compact.commitments, mandate, adjustment, fillBlock
         );
 
         // Execute the claim against The Compact and perform callback to filler.
         claimHash = _processClaimAndCallback(
-            compact,
-            mandate,
-            claim.sponsorSignature,
-            claim.allocatorSignature,
-            mandateHash,
-            fillAmounts,
-            claimant,
-            claimAmounts
+            claim, mandate, mandateHash, fillAmounts, claimant, claimAmounts
         );
 
         // Store the claim reduction scaling factor if claims were reduced
@@ -866,7 +857,7 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Emit the fill event.
         emit FillWithClaim(
-            compact.sponsor,
+            claim.compact.sponsor,
             claimant,
             claimHash,
             fillRecipients,
@@ -949,15 +940,17 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     function _processClaimAndCallback(
-        BatchCompact calldata compact,
+        BatchClaim calldata batchClaim,
         FillParameters calldata mandate,
-        bytes calldata sponsorSignature,
-        bytes calldata allocatorSignature,
         bytes32 mandateHash,
         uint256[] memory fillAmounts,
         bytes32 claimant,
         uint256[] memory claimAmounts
     ) internal returns (bytes32 claimHash) {
+        BatchCompact calldata compact = batchClaim.compact;
+        bytes calldata sponsorSignature = batchClaim.sponsorSignature;
+        bytes calldata allocatorSignature = batchClaim.allocatorSignature;
+
         // Claim the tokens to the claimant.
         CompactBatchClaim memory claim;
         BatchClaimComponent memory component;
