@@ -732,11 +732,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
         (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments,
-            mandate,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock
+            compact.commitments, mandate, adjustment, fillBlock
         );
 
         // Derive and check claim hash.
@@ -828,11 +824,7 @@ contract Tribunal is BlockNumberish, ITribunal {
         // Derive fill and claim amounts.
         uint256 scalingMultiplier;
         (fillAmounts, claimAmounts, scalingMultiplier) = _deriveAmountsFromComponentsWithScaling(
-            compact.commitments,
-            mandate,
-            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve),
-            adjustment.targetBlock,
-            fillBlock
+            compact.commitments, mandate, adjustment, fillBlock
         );
 
         // Execute the claim against The Compact and perform callback to filler.
@@ -1270,8 +1262,7 @@ contract Tribunal is BlockNumberish, ITribunal {
      * @notice Internal function that derives amounts from components and returns the scaling multiplier.
      * @param maximumClaimAmounts The maximum amounts to claim.
      * @param mandate The fill parameters containing components and scaling info.
-     * @param priceCurve The price curve to apply.
-     * @param targetBlock The target block number.
+     * @param adjustment The adjustment parameters containing target block and supplemental price curve.
      * @param fillBlock The fill block number.
      * @return fillAmounts The derived fill amounts for each component.
      * @return claimAmounts The derived claim amounts.
@@ -1280,8 +1271,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     function _deriveAmountsFromComponentsWithScaling(
         Lock[] calldata maximumClaimAmounts,
         FillParameters calldata mandate,
-        uint256[] memory priceCurve,
-        uint256 targetBlock,
+        Adjustment calldata adjustment,
         uint256 fillBlock
     )
         internal
@@ -1297,6 +1287,11 @@ contract Tribunal is BlockNumberish, ITribunal {
         uint256 scalingFactor = mandate.scalingFactor;
 
         fillAmounts = new uint256[](components.length);
+
+        // Apply supplemental price curve to mandate price curve
+        uint256[] memory priceCurve =
+            mandate.priceCurve.applySupplementalPriceCurve(adjustment.supplementalPriceCurve);
+        uint256 targetBlock = adjustment.targetBlock;
 
         // Calculate the common scaling values
         uint256 currentScalingFactor = BASE_SCALING_FACTOR;
