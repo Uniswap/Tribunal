@@ -130,8 +130,6 @@ contract TribunalSettleOrRegisterTest is Test {
         bytes32 sourceClaimHash = bytes32(uint256(1));
         bytes32 mandateHash = bytes32(0); // No mandate hash needed for direct transfer
 
-        uint256 balanceBefore = recipient.balance;
-
         vm.prank(sponsor);
         bytes32 result =
             tribunal.settleOrRegister(sourceClaimHash, compact, mandateHash, recipient, "");
