@@ -44,27 +44,76 @@ contract TribunalLibraryGapsTest is Test {
     // ============ DomainLib Chain ID Change Coverage ============
 
     /**
-     * @notice Test domain separator update on chain ID change
+     * @notice Test domain separator update on chain ID change using the same contract
      * @dev Covers lines 39-51 in DomainLib.sol
      * This is critical for ensuring the domain separator is recalculated if the chain forks
      */
     function test_DomainSeparator_ChainIdChange() public {
-        // Record the initial domain separator
+        // Record the initial domain separator from the SAME tribunal instance
         bytes32 domainSeparatorBefore = _getDomainSeparator();
 
         // Simulate a chain ID change (e.g., during a fork)
         uint256 newChainId = block.chainid + 1;
         vm.chainId(newChainId);
 
-        // Deploy a new tribunal instance on the new chain ID
-        ERC7683Tribunal newTribunal = new ERC7683Tribunal();
+        // Query the domain separator again from the SAME tribunal instance
+        // This should trigger toLatest to recalculate due to chain ID change
+        bytes32 domainSeparatorAfter = _getDomainSeparator();
 
-        // The domain separator should be different due to chain ID change
-        bytes32 domainSeparatorAfter = _getDomainSeparatorForContract(address(newTribunal));
-
+        // The domain separator should be different after the chain ID changes
         assertTrue(
             domainSeparatorBefore != domainSeparatorAfter,
             "Domain separator should change when chain ID changes"
+        );
+    }
+
+    /**
+     * @notice Test toLatest function recalculates domain separator after chain ID change
+     * @dev Covers the branch in toLatest (lines 41-51) where chainId has changed
+     * This tests an EXISTING tribunal instance that needs to recalculate its domain separator
+     * when queried after a chain fork, which is the actual purpose of toLatest
+     */
+    function test_ToLatest_RecalculatesDomainSeparatorAfterChainIdChange() public {
+        // Store initial chain ID and domain separator
+        uint256 initialChainId = block.chainid;
+
+        // Get the domain separator on the original chain
+        // This internally calls toLatest, which should return the initial domain separator
+        bytes32 domainSeparatorOriginal = _getDomainSeparator();
+
+        // Simulate a chain fork by changing the chain ID
+        uint256 newChainId = initialChainId + 1;
+        vm.chainId(newChainId);
+
+        // Now query the domain separator again from the SAME tribunal instance
+        // This should trigger the toLatest function to recalculate the domain separator
+        // because the chainId has changed from what was stored at deployment
+        bytes32 domainSeparatorAfterFork = _getDomainSeparator();
+
+        // Calculate what the new domain separator should be
+        bytes32 expectedNewDomainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                newChainId,
+                address(tribunal)
+            )
+        );
+
+        // Verify the domain separator was recalculated
+        assertEq(
+            domainSeparatorAfterFork,
+            expectedNewDomainSeparator,
+            "Domain separator should be recalculated for new chain ID"
+        );
+
+        // Verify it's different from the original
+        assertTrue(
+            domainSeparatorOriginal != domainSeparatorAfterFork,
+            "Domain separator should differ after chain ID change"
         );
     }
 
