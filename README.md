@@ -1,238 +1,675 @@
 # Tribunal ☝️
 
-**Tribunal** is a framework for processing cross-chain swap settlements against PGA (priority gas auction) blockchains. It ensures that tokens are transferred according to the mandate specified by the originating sponsor and enforces that a single party is able to perform the settlement in the event of a dispute.
+**Tribunal** is a protocol that runs competitive auctions for claims against resource locks. It is tightly integrated with **The Compact** as the preferred mechanism for settling claims after fills occur.
 
-To settle a cross-chain swap, the filler submits a "fill" request to the Tribunal contract. This consists of multiple components:
-1. **BatchClaim**: Contains the chain ID of a batch compact, its parameters, and its sponsor signature and allocator authorization data
-2. **Fill**: Specifies settlement conditions, amount derivation parameters, and recipient details
-3. **Adjustment**: Parameters signed by the adjuster including target block, price improvement, and validity conditions
-4. **Claimant**: Specifies the account that will receive the claimed tokens and details on whether to place them in a resource lock or to withdraw the underlying tokens
+## Overview
 
-> Note for cross-chain message protocols integrating with Tribunal: inherit the `Tribunal` contract and override the `_processDirective` and `_quoteDirective` functions to implement the relevant directive processing logic for passing a message to the arbiter on the claim chain (or ensure that the necessary state is updated to allow for the arbiter to "pull" the message themselves).
+Tribunal serves three core roles:
 
-### Core Components
+1. **Price Derivation**: Calculates fair prices (either fill amounts or claim amounts) based on parameters provided by the sponsor and their assigned adjuster, the auction start block, the current block, and the transaction's priority fee.
 
-#### BatchClaim Structure
-```solidity
-struct BatchClaim {
-    uint256 chainId;              // Claim processing chain ID
-    BatchCompact compact;          // The compact parameters
-    bytes sponsorSignature;        // Authorization from the sponsor
-    bytes allocatorSignature;      // Authorization from the allocator
-}
+2. **Filler Selection**: Designates a single, specific filler per unique auction and allows them to specify a claimant who is entitled to claim tokens held in the corresponding resource lock.
+
+3. **Result Distribution**: Makes auction results available to be broadcast or relayed to any environment or chain through multiple mechanisms (dispatch callbacks, state queries, or direct on-chain claims).
+
+### What is Tribunal?
+
+Tribunal enables sponsors (token holders) to auction tokens held in resource locks. These auctions:
+- Start at a specific block and evolve pricing over time
+- Accept bids through actual blockchain transactions (with priority fees influencing prices)
+- Support multiple input and/or output tokens in a single auction
+- Work across different blockchains
+- Integrate with various cross-chain messaging systems
+
+The protocol doesn't dictate _how_ claims are processed across chains—that's the responsibility of the designated arbiter. Tribunal simply determines _who_ won the auction and _what amounts_ should be claimable, and makes that information available through various channels.
+
+### Integration with The Compact
+
+Tribunal is deeply integrated with [The Compact](https://github.com/Uniswap/the-compact), a protocol for managing token deposits and claims through resource locks:
+
+- **Input tokens** (what fillers receive) are held in Compact resource locks
+- **Claims against locks** are processed through The Compact's infrastructure
+- **Settlement logic** uses The Compact's allocation and claim mechanisms
+- **Sponsor signatures** follow The Compact's EIP-712 structure with Tribunal-specific witness data
+
+## Core Concepts
+
+### Auction Participants
+
+**Sponsor**: Creates and signs the auction parameters (mandates). Controls the input tokens.
+
+**Adjuster**: Trusted party assigned by the sponsor who provides signed adjustments that:
+- Select which fill from a set of options to execute
+- Set the auction start block
+- Apply supplemental price curves for dynamic pricing
+- Optionally restrict fills to specific addresses or time windows
+
+**Filler**: Provides the output tokens to recipients and designates who can claim the input tokens.
+
+**Arbiter**: External party responsible for ultimately processing claims (may accept or reject Tribunal's suggestions).
+
+**Claimant**: The party designated by the filler to receive the input tokens from the resource lock.
+
+### Auction Structure
+
+A complete auction consists of:
+
+1. **Mandate**: The sponsor's signed commitment containing:
+   - Assigned adjuster address
+   - Array of possible fills (enabling conditional execution)
+
+2. **Fill Parameters**: Conditions for a specific fill including:
+   - Target chain ID and Tribunal contract address
+   - Expiration timestamp
+   - Array of fill components (multi-token outputs)
+   - Pricing parameters (baseline priority fee, scaling factor)
+   - Price curve (time-based pricing adjustments)
+   - Optional recipient callback specification
+
+3. **Fill Components**: Individual output tokens, each specifying:
+   - Token address (address(0) for native ETH)
+   - Minimum fill amount
+   - Recipient address
+   - Whether to apply competitive scaling
+
+4. **Adjustment**: Adjuster's signed authorization providing:
+   - Selected fill index
+   - Target block (auction start)
+   - Supplemental price curve
+   - Validity conditions (optional exclusive filler and block window)
+
+## Pricing Mechanisms
+
+Tribunal uses **three independent but composable pricing mechanisms** that work together:
+
+### 1. Priority Gas Auctions (PGA)
+
+Fillers compete by paying higher priority fees. The price adjustment is:
+
+```
+priorityFeeAboveBaseline = max(0, tx.gasprice - block.basefee - baselinePriorityFee)
+priceAdjustment = priorityFeeAboveBaseline * scalingFactor
 ```
 
-#### BatchCompact Structure (from The Compact)
+- **baselinePriorityFee**: Threshold where competitive scaling begins
+- **scalingFactor**: Multiplier per wei of priority fee (1e18 = 1:1 ratio)
+
+### 2. Price Curves
+
+Time-based pricing defined as an array of duration/scaling-factor pairs:
+
+- **Block duration** (16 bits): Time window for each segment
+- **Scaling factor** (240 bits): Price multiplier for that period
+- **Linear interpolation** between discrete points
+- **Zero-duration segments**: Instant price jumps at specific blocks
+
+Example curve:
 ```solidity
-struct BatchCompact {
-    address arbiter;               // The account tasked with verifying and submitting the claim
-    address sponsor;               // The account to source the tokens from
-    uint256 nonce;                 // A parameter to enforce replay protection, scoped to allocator
-    uint256 expires;               // The time at which the claim expires
-    Lock[] commitments;            // Array of token commitments
-}
+[
+  encode(100 blocks, 1.5e18),  // 150% for first 100 blocks
+  encode(0 blocks, 1.2e18),     // Instant jump to 120%
+  encode(200 blocks, 1.1e18),   // Decay to 110% over 200 blocks
+  // Defaults to 1e18 (neutral) if auction continues beyond specified duration
+]
 ```
 
-#### Lock Structure (commitment)
-```solidity
-struct Lock {
-    bytes12 lockTag;               // Tag identifying the lock type
-    address token;                 // Token address (address(0) for native)
-    uint256 amount;                // Amount of tokens locked
-}
+### 3. Supplemental Price Curves
+
+Additional adjustments provided by the adjuster, combined with the base curve:
+
+```
+combinedScalingFactor = baseCurveScalingFactor + supplementalScalingFactor - 1e18
 ```
 
-#### Mandate Structure
-```solidity
-struct Mandate {
-    address adjuster;              // The adjuster who can authorize fills
-    Fill[] fills;                  // Array of possible fill conditions
-}
-```
+This allows dynamic pricing based on market conditions while maintaining the sponsor's original curve structure.
 
-#### Fill Structure
-```solidity
-struct FillParameters {
-    uint256 chainId;               // Chain where fill occurs
-    address tribunal;              // Tribunal contract address
-    uint256 expires;               // Fill expiration timestamp
-    address fillToken;             // Fill token (address(0) for native)
-    uint256 minimumFillAmount;     // Minimum fill amount
-    uint256 baselinePriorityFee;  // Base fee threshold where scaling kicks in
-    uint256 scalingFactor;         // Fee scaling multiplier (1e18 baseline)
-    uint256[] priceCurve;          // Block durations and scaling factors
-    address recipient;             // Recipient of filled tokens
-    RecipientCallback[] recipientCallback; // Optional callback array
-    bytes32 salt;                  // Preimage resistance parameter
-}
-```
+### Pricing Direction: Exact-In vs Exact-Out
 
-#### Adjustment Structure
-```solidity
-struct Adjustment {
-    uint256 fillIndex;             // Index of the fill being executed
-    uint256 targetBlock;           // Target block for the fill
-    uint256[] supplementalPriceCurve; // Additional price curve adjustments
-    bytes32 validityConditions;   // Optional filler address and block window
-}
-```
+The protocol automatically determines auction mode based on the `scalingFactor`:
 
-#### RecipientCallback Structure
-```solidity
-struct RecipientCallback {
-    uint256 chainId;               // Chain ID for the callback
-    BatchCompact compact;          // Compact for the callback
-    bytes32 mandateHash;           // Hash of the mandate
-    bytes context;                 // Additional context data
-}
-```
+**Exact-In Mode** (`scalingFactor ≥ 1e18`):
+- Fill amounts increase as fillers compete
+- Claim amounts remain at maximum
+- Better for "how much output can you provide" auctions
 
-> Note: These structs represent the arguments that should be provided by the filler when processing a respective fill (with the exception of `Mandate`, where only a single `Fill` and an accompanying `fillHashes` array will be provided). The compact that is signed by the respective sponsor will contain the full EIP-712 payload with all nested structs fully visible; the sponsor may then selectively reveal the contents of those nested fields at the appropriate time, until which point only the respective hashes will be shared with fillers and other relevant parties.
+**Exact-Out Mode** (`scalingFactor < 1e18`):
+- Claim amounts decrease as fillers compete
+- Fill amounts remain at minimum
+- Better for "how little input will you accept" auctions
 
-### Process Flow
+**Direction Consistency**: All scaling factors (base curve, supplemental curve, PGA component) must scale in the same direction or be neutral (1e18).
 
-1. Fillers initiate by calling `fill(BatchClaim calldata claim, Fill calldata mandate, address adjuster, Adjustment calldata adjustment, bytes calldata adjustmentAuthorization, bytes32[] calldata fillHashes, bytes32 claimant, uint256 fillBlock)` and providing any msg.value required for the settlement to pay to process the cross-chain message.
-2. Tribunal verifies:
-   - The mandate has not expired
-   - The chain ID matches
-   - Validity conditions from the adjustment are met (filler address and block window)
-   - The adjuster's signature on the adjustment is valid
-3. Computation phase:
-   - Derives the EIP-712 hash of the target `Fill` based on the index indicated by the adjuster
-   - Derives `mandateHash` using the `adjuster` account and the `fillHashes` array (ensuring the hash of the indicated fill matches the provided hash at the respective index) 
-   - Derives `claimHash` using the compact and mandate hash
-   - Ensures that the `claimHash` has not already been used and marks it as filled
-   - Calculates `fillAmount` and `claimAmounts` based on:
-     - Compact commitment amounts
-     - Fill parameters (`minimumFillAmount`, `baselinePriorityFee`, `scalingFactor`)
-     - Price curves (both base and supplemental)
-     - Target block and fill block timing
-     - `tx.gasprice` and `block.basefee`
-4. Execution phase:
-   - Transfers `fillAmount` of `fillToken` to fill `recipient`
-   - For same-chain fills: Claims tokens via The Compact and triggers a callback
-   - For cross-chain fills: Processes directive via `_processDirective`
-   - Performs optional recipient callback if specified
-   - Returns any unused native tokens to the caller
+## Fill Execution
 
-### Key Functions
+### Standard Fill (Cross-Chain)
 
-#### Fill Function
+For fills on a different chain than the claim:
+
 ```solidity
 function fill(
-    BatchClaim calldata claim,
-    Fill calldata mandate,
-    address adjuster,
+    BatchCompact calldata compact,
+    FillParameters calldata mandate,
     Adjustment calldata adjustment,
-    bytes calldata adjustmentAuthorization,
     bytes32[] calldata fillHashes,
     bytes32 claimant,
     uint256 fillBlock
 ) external payable returns (
     bytes32 claimHash,
     bytes32 mandateHash,
-    uint256 fillAmount,
+    uint256[] memory fillAmounts,
     uint256[] memory claimAmounts
 )
 ```
 
-#### Settlement/Registration Function
+**Process**:
+1. Validates mandate hasn't expired and chain ID matches
+2. Verifies adjuster's signature on the adjustment
+3. Validates validity conditions (exclusive filler, block window)
+4. Calculates fill amounts and claim amounts based on all pricing mechanisms
+5. Marks claim as filled with designated claimant
+6. Transfers fill tokens to recipients
+7. Optionally triggers recipient callback
+8. Returns claim details for cross-chain relay
+
+### Fill with Dispatch
+
+Immediately sends results to a cross-chain messaging contract:
+
+```solidity
+function fillAndDispatch(
+    BatchCompact calldata compact,
+    FillParameters calldata mandate,
+    Adjustment calldata adjustment,
+    bytes32[] calldata fillHashes,
+    bytes32 claimant,
+    uint256 fillBlock,
+    DispatchParameters calldata dispatchParameters
+) external payable returns (...)
+```
+
+The dispatch callback receives all claim details for relaying to the arbiter on the claim chain.
+
+### Same-Chain Fill
+
+For fills on the same chain as the claim:
+
+```solidity
+function claimAndFill(
+    BatchClaim calldata claim,
+    FillParameters calldata mandate,
+    Adjustment calldata adjustment,
+    bytes32[] calldata fillHashes,
+    bytes32 claimant,
+    uint256 fillBlock
+) external payable returns (...)
+```
+
+This function simultaneously:
+1. Processes the claim through The Compact
+2. Executes the fill
+3. Callbacks to the filler with exact requirements
+4. Makes tokens immediately available to the claimant
+
+### Deferred Dispatch
+
+Dispatch results of a previously completed fill:
+
+```solidity
+function dispatch(
+    BatchCompact calldata compact,
+    bytes32 mandateHash,
+    DispatchParameters calldata dispatchParams
+) external payable returns (bytes32 claimHash, uint256[] memory claimAmounts)
+```
+
+Useful for:
+- Retrying failed dispatches
+- Delayed cross-chain messaging
+- Multi-step relay processes
+
+## Settlement and Registration
+
+The `settleOrRegister` function handles the destination side of cross-chain flows:
+
 ```solidity
 function settleOrRegister(
     bytes32 sourceClaimHash,
     BatchCompact calldata compact,
     bytes32 mandateHash,
-    address recipient
-) external returns (bytes32 registeredClaimHash)
+    address recipient,
+    bytes calldata context
+) external payable returns (bytes32 registeredClaimHash)
 ```
-Serves as a point of entry where bridged tokens (triggered via recipient callback of a filled same-chain compact on another chain) are either:
- - used to register a new compact on the target chain
- - sent directly to the sponsor (assuming the sponsor cancels the target chain compact after the bridge was already initiated) or the filler (assuming the filler successfully performed a fill on the target chain and a same-chain fill was triggered before the filler was able to claim the tokens from the source chain).
 
- > Note: the adjuster is expected to only authorize a same-chain fill in the `fills` array after verifying that the cross-chain fill has not already been executed; the settlement mechanic where tokens will be forwarded to the filler in the event of a fill is intended to operate as an added "safety measure" and is not meant to be invoked as part of default behavior. This protects against race conditions or erroneous/malicious adjusters and gives fillers additional confidence that they will receive back tokens on the target chain even if the tokens are no longer claimable on the source chain. Cross-chain fillers should consider the adjuster in question and examine the entire fill array to ensure they are comfortable with the possibility that multiple fills may trigger if they are not fully confident that the adjuster will correctly prevent that outcome.
+**Multi-modal behavior**:
 
-#### Cancel Functions
-```solidity
-function cancel(BatchClaim calldata claim, bytes32 mandateHash) external payable
-function cancelChainExclusive(BatchCompact calldata compact, bytes32 mandateHash) external
-```
-Allows sponsors to cancel claims before they are filled. The `cancel` function will trigger a dispensation back to the source chain, explicitly consuming the source chain compact and enabling early deallocation of respective source chain tokens. The `cancelChainExclusive` function will only invalidate the fill on the target chain, skipping the dispensation and any associated costs.
+1. **If source claim is filled**: Forwards tokens to the filler (already claimed on source chain)
+2. **If empty lock tag**: Direct transfer to recipient (no lock needed)
+3. **If zero mandate hash**: Deposits tokens to The Compact without registration
+4. **If nonce is zero**: On-chain allocation flow with allocator callbacks
+5. **Otherwise**: Standard compact registration for follow-up auction
 
-> Note: Cross-chain fills must be cancelled on the target chain prior to a successful fill on that chain. Same-chain fills can be safely cancelled directly on that chain at any point prior to the fill.
+This flexibility enables complex multi-chain flows where:
+- Fill on Chain A → Bridge to Chain B → Register new auction on Chain B
+- Fill on Chain A → Bridge to Chain B → Direct transfer to recipient
+- Fill on Chain A → Bridge to Chain B → Deposit for manual allocation
 
-#### View Functions
-- `quote(...)` - Suggests a dispensation amount for cross-chain messaging costs
-- `filled(bytes32 claimHash)` - Checks if a claim hash has been filled or cancelled
-- `getCompactWitnessDetails()` - Returns witness typestring and argument positions
-- `deriveMandateHash(Mandate calldata mandate)` - Derives EIP-712 mandate hash
-- `deriveFillHash(Fill calldata targetFill)` - Derives EIP-712 fill hash
-- `deriveClaimHash(BatchCompact calldata compact, bytes32 mandateHash)` - Derives claim hash
-- `deriveAmounts(...)` - Calculates fill and claim amounts based on parameters
+## Cancellation
 
-### EIP-712 Type Hashes
-
-The contract uses a nested, recursive EIP-712 structure:
+Sponsors can cancel unfilled auctions:
 
 ```solidity
-// Main typehashes
-MANDATE_TYPEHASH
-MANDATE_FILL_TYPEHASH
-MANDATE_RECIPIENT_CALLBACK_TYPEHASH
-MANDATE_BATCH_COMPACT_TYPEHASH
-MANDATE_LOCK_TYPEHASH
-COMPACT_TYPEHASH_WITH_MANDATE
-ADJUSTMENT_TYPEHASH
+function cancel(
+    BatchCompact calldata compact,
+    bytes32 mandateHash
+) external returns (bytes32 claimHash)
 ```
 
-The witness typestring used for The Compact integration includes the full nested structure of mandates, fills, and callbacks.
+Or cancel with a dispatch notification:
 
-### Price Curves and Scaling
-
-The contract supports multiple concurrent pricing mechanisms:
-- **Base price curves**: Define how prices change over blocks from the target block, with linear interpolation between respective durations in the relevant timeframe
-- **Supplemental price curves**: Additional adjustments to the price curve provided by the adjuster
-- **Scaling factors**: Modify amounts based on gas prices above baseline
-- **Exact-in vs Exact-out**: Automatically determines whether to scale fill amount up or claim amount down
-
-> Note: Each concurrent "scaling factor" is aggregated with other scaling factors to determine the final scaling factor. Exact-in indicates that the fill amount will be scaled up, while exact-out indicates that the claim amounts will be scaled down. "Wad" math is utilized such that a scaling factor of 1e18 will result in no price change, values above 1e18 will result in the fill amount being scaled up to (amount * scaling factor) / 1e18, and values below 1e18 will result in the claim amounts being scaled down to (amount * scaling factor) / 1e18. The "direction" of each scaling factor must be consistent so that all values scale the same side of the swap or are neutral.
-
-### Integration with The Compact
-
-Tribunal is deeply integrated with The Compact protocol for:
-- Token deposits and registrations
-- Claim processing for same-chain fills
-- Integration with onchain allocations (indicated by providing a nonce of 0 to `settleOrRegister`)
-- Batch operations for compacts involving multiple token commitments
-
-### Security Features
-
-- **Reentrancy protection**: Using transient storage for gas-efficient guards
-- **Replay protection**: Via claim hash tracking and nonces
-- **Signature verification**: For sponsors, allocators, and adjusters
-- **Expiration checks**: At multiple levels (compact, fill, mandate)
-- **Validity conditions**: Optional exclusive filler and block windows
-
-### Fee-on-Transfer Token Handling
-Swappers must handle fee-on-transfer tokens carefully, as settlement will result in fewer tokens being received by the recipient than the specified fill amount. When providing fill amounts for such tokens:
-- Swappers must account for the token's transfer fee in their calculations
-- The actual received amount will be less than the specified fill amount
-- Frontend implementations should display appropriate warnings
-
-## Remaining Work
-- [ ] Provide examples for directive processing with various cross-chain messaging systems
-- [ ] Provide examples for performing same-chain token swaps followed by a registration of an associated compact on a target chain via recipient callbacks with various bridging systems
-- [ ] Improve quote function for gas estimation
-- [ ] Add comprehensive integration tests
-- [ ] Update deployment scripts
-- [ ] Document adjuster role and responsibilities
-- [ ] Add examples for complex multi-chain flows
-
-## Usage
-
-```shell
-$ git clone https://github.com/uniswap/tribunal
-$ forge install
+```solidity
+function cancelAndDispatch(
+    BatchCompact calldata compact,
+    bytes32 mandateHash,
+    DispatchParameters calldata dispatchParams
+) external payable returns (bytes32 claimHash)
 ```
+
+Cancellation:
+- Prevents future fills on that claim hash
+- Stores `type(uint256).max` as the cancellation flag
+- `claimReductionScalingFactor()` returns 0 for cancelled claims
+- Can trigger dispatch callback with zero amounts
+
+## Querying Auction Results
+
+### Check Fill Status
+
+```solidity
+function filled(bytes32 claimHash) external view returns (bytes32)
+```
+
+Returns:
+- The claimant if filled
+- The sponsor if cancelled
+- Zero if unfilled
+
+### Get Scaling Factor
+
+```solidity
+function claimReductionScalingFactor(bytes32 claimHash) external view returns (uint256)
+```
+
+Returns:
+- The actual scaling factor if claims were reduced (< 1e18)
+- 1e18 if no reduction occurred
+- 0 if the claim was cancelled
+
+### Batch Query
+
+```solidity
+function getDispositionDetails(bytes32[] calldata claimHashes)
+    external view returns (DispositionDetails[] memory)
+```
+
+Efficiently queries multiple claims at once, returning both claimant and scaling factor for each.
+
+## Callback Interfaces
+
+### Dispatch Callback (Cross-Chain Messaging)
+
+Implement `IDispatchCallback` to receive fill results:
+
+```solidity
+interface IDispatchCallback {
+    function dispatchCallback(
+        uint256 chainId,
+        BatchCompact calldata compact,
+        bytes32 mandateHash,
+        bytes32 claimHash,
+        bytes32 claimant,
+        uint256 claimReductionScalingFactor,
+        uint256[] calldata claimAmounts,
+        bytes calldata context
+    ) external payable returns (bytes4);
+}
+```
+
+Use this to:
+- Send cross-chain messages to arbiters
+- Relay claim information to destination chains
+- Trigger follow-up actions based on fill results
+
+### Recipient Callback (Bridging)
+
+Implement `IRecipientCallback` to receive same-chain fill notifications:
+
+```solidity
+interface IRecipientCallback {
+    function tribunalCallback(
+        uint256 chainId,
+        bytes32 sourceClaimHash,
+        bytes32 sourceMandateHash,
+        address fillToken,
+        uint256 fillAmount,
+        BatchCompact calldata targetCompact,
+        bytes32 targetMandateHash,
+        bytes calldata context
+    ) external returns (bytes4);
+}
+```
+
+Use this to:
+- Bridge tokens to another chain
+- Register follow-up compacts
+- Chain multiple auctions together
+
+## Data Structures
+
+### BatchCompact (from The Compact)
+
+```solidity
+struct BatchCompact {
+    address arbiter;        // Party responsible for processing claims
+    address sponsor;        // Token source
+    uint256 nonce;         // Replay protection (0 for on-chain allocation)
+    uint256 expires;       // Expiration timestamp
+    Lock[] commitments;    // Array of token locks
+}
+```
+
+### Lock (Commitment)
+
+```solidity
+struct Lock {
+    bytes12 lockTag;       // Lock type identifier
+    address token;         // Token address (address(0) for native)
+    uint256 amount;        // Token amount
+}
+```
+
+### Mandate
+
+```solidity
+struct Mandate {
+    address adjuster;           // Assigned adjuster
+    FillParameters[] fills;     // Array of possible fills
+}
+```
+
+### FillParameters
+
+```solidity
+struct FillParameters {
+    uint256 chainId;                      // Target chain
+    address tribunal;                     // Tribunal contract address
+    uint256 expires;                      // Expiration timestamp
+    FillComponent[] components;           // Multi-token outputs
+    uint256 baselinePriorityFee;         // PGA threshold
+    uint256 scalingFactor;                // PGA multiplier (1e18 baseline)
+    uint256[] priceCurve;                 // Time-based pricing
+    RecipientCallback[] recipientCallback; // Optional callback (0 or 1 elements)
+    bytes32 salt;                         // Preimage resistance
+}
+```
+
+### FillComponent
+
+```solidity
+struct FillComponent {
+    address fillToken;           // Output token
+    uint256 minimumFillAmount;   // Base amount
+    address recipient;           // Token recipient
+    bool applyScaling;          // Enable competitive scaling
+}
+```
+
+### Adjustment
+
+```solidity
+struct Adjustment {
+    address adjuster;                    // Adjuster address (not in EIP-712 payload)
+    uint256 fillIndex;                   // Selected fill index
+    uint256 targetBlock;                 // Auction start block
+    uint256[] supplementalPriceCurve;    // Additional pricing
+    bytes32 validityConditions;          // Encoded filler + window
+    bytes adjustmentAuthorization;       // Adjuster signature (not in EIP-712 payload)
+}
+```
+
+**Validity Conditions Encoding**:
+- Lower 160 bits: Exclusive filler address (0 = any filler)
+- Upper 96 bits: Block window duration (0 = no limit, 1 = exact block, N = N blocks)
+
+### DispatchParameters
+
+```solidity
+struct DispatchParameters {
+    uint256 chainId;    // Target chain for message
+    address target;     // Dispatch callback contract
+    uint256 value;      // Native token to send
+    bytes context;      // Arbitrary data
+}
+```
+
+### RecipientCallback
+
+```solidity
+struct RecipientCallback {
+    uint256 chainId;         // Target chain
+    BatchCompact compact;    // Follow-up compact
+    bytes32 mandateHash;     // Follow-up mandate hash
+    bytes context;           // Arbitrary data
+}
+```
+
+## View Functions
+
+### Hash Derivation
+
+```solidity
+function deriveMandateHash(Mandate calldata mandate) external view returns (bytes32)
+function deriveFillsHash(FillParameters[] calldata fills) external view returns (bytes32)
+function deriveFillHash(FillParameters calldata targetFill) external view returns (bytes32)
+function deriveFillComponentHash(FillComponent calldata component) external pure returns (bytes32)
+function deriveRecipientCallbackHash(RecipientCallback[] calldata recipientCallback) external pure returns (bytes32)
+function deriveClaimHash(BatchCompact calldata compact, bytes32 mandateHash) external pure returns (bytes32)
+```
+
+### Amount Calculation
+
+```solidity
+function deriveAmounts(
+    Lock[] calldata maximumClaimAmounts,
+    uint256[] memory priceCurve,
+    uint256 targetBlock,
+    uint256 fillBlock,
+    uint256 minimumFillAmount,
+    uint256 baselinePriorityFee,
+    uint256 scalingFactor
+) external view returns (uint256 fillAmount, uint256[] memory claimAmounts)
+```
+
+Simulates price calculation for testing and estimation.
+
+### Compact Integration
+
+```solidity
+function getCompactWitnessDetails() external pure returns (
+    string memory witnessTypeString,
+    ArgDetail[] memory details
+)
+```
+
+Returns EIP-712 witness structure for The Compact integration.
+
+## EIP-712 Type Structure
+
+Tribunal uses a deeply nested EIP-712 structure:
+
+```
+Mandate
+├── adjuster: address
+└── fills: Mandate_Fill[]
+    ├── chainId: uint256
+    ├── tribunal: address
+    ├── expires: uint256
+    ├── components: Mandate_FillComponent[]
+    │   ├── fillToken: address
+    │   ├── minimumFillAmount: uint256
+    │   ├── recipient: address
+    │   └── applyScaling: bool
+    ├── baselinePriorityFee: uint256
+    ├── scalingFactor: uint256
+    ├── priceCurve: uint256[]
+    ├── recipientCallback: Mandate_RecipientCallback[]
+    │   ├── chainId: uint256
+    │   ├── compact: Mandate_BatchCompact
+    │   │   ├── arbiter: address
+    │   │   ├── sponsor: address
+    │   │   ├── nonce: uint256
+    │   │   ├── expires: uint256
+    │   │   ├── commitments: Mandate_Lock[]
+    │   │   │   ├── lockTag: bytes12
+    │   │   │   ├── token: address
+    │   │   │   └── amount: uint256
+    │   │   └── mandate: (recursive)
+    │   ├── mandateHash: bytes32
+    │   └── context: bytes
+    └── salt: bytes32
+
+Adjustment
+├── claimHash: bytes32
+├── fillIndex: uint256
+├── targetBlock: uint256
+├── supplementalPriceCurve: uint256[]
+└── validityConditions: bytes32
+```
+
+The witness typestring is used when registering compacts with The Compact, enabling selective reveal of nested data.
+
+## Security Considerations
+
+### Reentrancy Protection
+Uses transient storage (`tstore`/`tload`) for gas-efficient, multi-function reentrancy guards. All external state-changing functions are protected.
+
+### Replay Protection
+- Claim hashes are marked as filled on first successful fill
+- Nonces in The Compact provide additional replay protection
+- Mandate salts enable multiple mandates with same parameters
+
+### Signature Verification
+- Sponsor signatures on compacts (via The Compact)
+- Allocator signatures for claims (via The Compact)
+- Adjuster signatures on adjustments (via Tribunal)
+
+### Expiration Checks
+Multiple levels of expiration:
+- Compact expiration (from The Compact)
+- Fill expiration (per-fill basis)
+- Mandate expiration (inherited from compact)
+
+### Validity Conditions
+Adjuster can restrict fills to:
+- Specific filler addresses
+- Specific block windows
+- Combination of both
+
+### Fee-on-Transfer Tokens
+⚠️ **Warning**: Settling fee-on-transfer tokens results in fewer tokens received than specified. Sponsors must account for transfer fees when setting amounts.
+
+## Arbiter Responsibilities
+
+While Tribunal determines auction winners and computes claim amounts, **arbiters are ultimately responsible** for processing claims:
+
+### Tribunal's Role
+- Runs auctions and determines winners
+- Records dispositions (claimant + scaling factor)
+- Makes claim information available via multiple channels
+- Suggests claim parameters
+
+### Arbiter's Role
+- Receives fill results (via dispatch or queries)
+- Validates claim legitimacy
+- Decides whether to accept Tribunal's suggestions
+- Actually processes claims through The Compact
+- Bears responsibility for claim validity
+
+This separation allows arbiters to implement:
+- Custom validation logic
+- Dispute resolution mechanisms
+- Multi-signature requirements
+- Additional safety checks
+
+## Usage Examples
+
+### Basic Fill Flow
+
+```solidity
+// 1. Sponsor creates and signs mandate with The Compact
+Mandate memory mandate = Mandate({
+    adjuster: adjusterAddress,
+    fills: [fillParams]
+});
+
+// 2. Adjuster signs adjustment
+Adjustment memory adjustment = Adjustment({
+    adjuster: adjusterAddress,
+    fillIndex: 0,
+    targetBlock: block.number,
+    supplementalPriceCurve: new uint256[](0),
+    validityConditions: bytes32(0),
+    adjustmentAuthorization: signature
+});
+
+// 3. Filler executes fill
+(bytes32 claimHash, bytes32 mandateHash, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = 
+    tribunal.fill{value: dispatchCost}(
+        compact,
+        fillParams,
+        adjustment,
+        fillHashes,
+        claimant,
+        0 // use current block
+    );
+
+// 4. Results available for cross-chain relay
+```
+
+### Same-Chain Fill
+
+```solidity
+// Execute claim and fill atomically
+(bytes32 claimHash, bytes32 mandateHash, uint256[] memory fillAmounts, uint256[] memory claimAmounts) = 
+    tribunal.claimAndFill(
+        batchClaim,
+        fillParams,
+        adjustment,
+        fillHashes,
+        claimant,
+        0
+    );
+
+// Tokens immediately available to claimant
+```
+
+### Querying Results
+
+```solidity
+// Check if filled
+bytes32 claimant = tribunal.filled(claimHash);
+
+// Get scaling factor
+uint256 scalingFactor = tribunal.claimReductionScalingFactor(claimHash);
+
+// Reconstruct claim amounts
+uint256[] memory claimAmounts = new uint256[](compact.commitments.length);
+for (uint256 i = 0; i < compact.commitments.length; i++) {
+    claimAmounts[i] = compact.commitments[i].amount * scalingFactor / 1e18;
+}
+```
+
+## Development
 
 ### Build
 
@@ -259,14 +696,23 @@ $ forge snapshot --isolate
 ```
 
 ### Code Coverage
+
 ```shell
 $ FOUNDRY_PROFILE=coverage forge coverage --exclude-tests
 ```
 
-add ` --report lcov` to generate a coverage report and use `genhtml lcov.info --output-directory coverage; open coverage/index.html` to view it.
+Add `--report lcov` to generate a coverage report:
+```shell
+$ genhtml lcov.info --output-directory coverage
+$ open coverage/index.html
+```
 
 ### Deploy
 
 ```shell
 $ forge script script/Tribunal.s.sol:TribunalScript --rpc-url <your_rpc_url> --private-key <your_private_key>
 ```
+
+## License
+
+MIT
