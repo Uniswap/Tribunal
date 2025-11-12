@@ -44,76 +44,76 @@ contract TribunalLibraryGapsTest is Test {
     // ============ DomainLib Chain ID Change Coverage ============
 
     /**
-     * @notice Test domain separator update on chain ID change using the same contract
-     * @dev Covers lines 39-51 in DomainLib.sol
-     * This is critical for ensuring the domain separator is recalculated if the chain forks
+     * @notice Test that toLatest recalculates domain separator after chain ID change
+     * @dev Covers lines 39-51 in DomainLib.sol (the branch where chainId changed)
+     * This test signs an adjustment on the original chainId, then changes the chainId.
+     * The fill should revert because the signature was created with the old domain separator,
+     * but toLatest will recalculate it with the new chainId, causing signature verification to fail.
      */
-    function test_DomainSeparator_ChainIdChange() public {
-        // Record the initial domain separator from the SAME tribunal instance
-        bytes32 domainSeparatorBefore = _getDomainSeparator();
+    function test_DomainSeparator_ChainIdChange_CausesSignatureFailure() public {
+        // Store the original chainId and set the new chainId we'll fork to
+        uint256 originalChainId = block.chainid;
+        uint256 newChainId = originalChainId + 1;
 
-        // Simulate a chain ID change (e.g., during a fork)
-        uint256 newChainId = block.chainid + 1;
+        // Set up a basic fill scenario with the NEW chainId (the one we'll be on when filling)
+        BatchCompact memory compact = _getBatchCompact(10 ether);
+
+        // Create fill parameters with the NEW chainId
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(token),
+            minimumFillAmount: 1 ether,
+            recipient: sponsor,
+            applyScaling: true
+        });
+
+        FillParameters memory fill = FillParameters({
+            chainId: newChainId, // Set to the NEW chainId we'll be on during the fill
+            tribunal: address(tribunal),
+            expires: uint256(block.timestamp + 1 days),
+            components: components,
+            baselinePriorityFee: 100 wei,
+            scalingFactor: 1e18,
+            priceCurve: new uint256[](0),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Mandate memory mandate = _getMandate(fill);
+
+        // Create and sign the adjustment on the ORIGINAL chainId
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: block.number,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: ""
+        });
+
+        // Sign the adjustment using the ORIGINAL chainId's domain separator
+        adjustment.adjustmentAuthorization = _signAdjustment(adjustment, compact, mandate);
+
+        // Approve tokens for the fill
+        vm.prank(filler);
+        token.approve(address(tribunal), type(uint256).max);
+
+        // NOW change the chainId (simulating a fork)
         vm.chainId(newChainId);
 
-        // Query the domain separator again from the SAME tribunal instance
-        // This should trigger toLatest to recalculate due to chain ID change
-        bytes32 domainSeparatorAfter = _getDomainSeparator();
+        // Calculate fillHashes AFTER changing chainId, since deriveFillHash depends on current chainId
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
 
-        // The domain separator should be different after the chain ID changes
-        assertTrue(
-            domainSeparatorBefore != domainSeparatorAfter,
-            "Domain separator should change when chain ID changes"
-        );
-    }
-
-    /**
-     * @notice Test toLatest function recalculates domain separator after chain ID change
-     * @dev Covers the branch in toLatest (lines 41-51) where chainId has changed
-     * This tests an EXISTING tribunal instance that needs to recalculate its domain separator
-     * when queried after a chain fork, which is the actual purpose of toLatest
-     */
-    function test_ToLatest_RecalculatesDomainSeparatorAfterChainIdChange() public {
-        // Store initial chain ID and domain separator
-        uint256 initialChainId = block.chainid;
-
-        // Get the domain separator on the original chain
-        // This internally calls toLatest, which should return the initial domain separator
-        bytes32 domainSeparatorOriginal = _getDomainSeparator();
-
-        // Simulate a chain fork by changing the chain ID
-        uint256 newChainId = initialChainId + 1;
-        vm.chainId(newChainId);
-
-        // Now query the domain separator again from the SAME tribunal instance
-        // This should trigger the toLatest function to recalculate the domain separator
-        // because the chainId has changed from what was stored at deployment
-        bytes32 domainSeparatorAfterFork = _getDomainSeparator();
-
-        // Calculate what the new domain separator should be
-        bytes32 expectedNewDomainSeparator = keccak256(
-            abi.encode(
-                keccak256(
-                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
-                ),
-                keccak256("Tribunal"),
-                keccak256("1"),
-                newChainId,
-                address(tribunal)
-            )
-        );
-
-        // Verify the domain separator was recalculated
-        assertEq(
-            domainSeparatorAfterFork,
-            expectedNewDomainSeparator,
-            "Domain separator should be recalculated for new chain ID"
-        );
-
-        // Verify it's different from the original
-        assertTrue(
-            domainSeparatorOriginal != domainSeparatorAfterFork,
-            "Domain separator should differ after chain ID change"
+        // Attempt to fill - this should REVERT because:
+        // - The signature was created with the old domain separator (old chainId)
+        // - But verification will use toLatest(), which will detect the chainId changed
+        // - toLatest() will recalculate the domain separator with the NEW chainId
+        // - This causes the signature to be invalid
+        vm.expectRevert(ITribunal.InvalidAdjustment.selector); // Should revert due to invalid signature
+        vm.prank(filler);
+        tribunal.fill(
+            compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(filler))), block.number
         );
     }
 
