@@ -3,6 +3,7 @@ cache/
 out/
 
 lcov.info
+coverage/
 
 # Ignores development broadcast logs
 !/broadcast
