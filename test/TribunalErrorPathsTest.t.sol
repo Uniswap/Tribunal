@@ -369,29 +369,137 @@ contract TribunalErrorPathsTest is Test {
 
     /**
      * @notice Test Arbitrum block number path
-     * @dev Covers line 16 by mocking IArbSys precompile and deploying on Arbitrum
+     * @dev Covers line 16 by mocking IArbSys precompile and calling a fill operation on Arbitrum
      */
     function test_ArbitrumBlockNumber() public {
-        // Mock the IArbSys precompile
-        address arbSysAddress = address(0x0000000000000000000000000000000000000064);
-
-        // Create mock that returns a specific block number
+        // Mock the IArbSys precompile to return current block number
         vm.mockCall(
-            arbSysAddress, abi.encodeWithSignature("arbBlockNumber()"), abi.encode(uint256(12345))
+            address(0x0000000000000000000000000000000000000064),
+            abi.encodeWithSignature("arbBlockNumber()"),
+            abi.encode(block.number)
         );
 
         // Set chain ID to Arbitrum
         vm.chainId(42161);
 
-        // Deploy a new tribunal on "Arbitrum" - this deployment will trigger _getBlockNumberish
-        // in various internal functions that check block numbers
-        new Tribunal();
+        // Deploy a new tribunal on "Arbitrum"
+        Tribunal arbTribunal = new Tribunal();
 
-        // Verify we're on Arbitrum chain
-        assertEq(block.chainid, 42161, "Should be on Arbitrum");
+        // Execute a fill to trigger _getBlockNumberish
+        _performArbitrumFill(arbTribunal);
 
         // Reset chain ID
         vm.chainId(31337);
+    }
+
+    function _performArbitrumFill(Tribunal arbTribunal) internal {
+        // Create compact and mandate
+        (BatchCompact memory compact, FillParameters memory mandate, Adjustment memory adjustment) =
+            _createArbitrumFillParams(arbTribunal);
+
+        // Derive hashes and sign
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = arbTribunal.deriveFillHash(mandate);
+
+        // Sign adjustment
+        _signArbitrumAdjustment(arbTribunal, compact, mandate, adjustment);
+
+        // Execute fill
+        vm.startPrank(filler);
+        token.approve(address(arbTribunal), type(uint256).max);
+        arbTribunal.fill(
+            compact, mandate, adjustment, fillHashes, bytes32(uint256(uint160(filler))), 0
+        );
+        vm.stopPrank();
+    }
+
+    function _createArbitrumFillParams(Tribunal arbTribunal)
+        internal
+        view
+        returns (BatchCompact memory, FillParameters memory, Adjustment memory)
+    {
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(uint96(1)), token: address(token), amount: 100e18});
+
+        BatchCompact memory compact = BatchCompact({
+            arbiter: address(arbTribunal),
+            sponsor: sponsor,
+            nonce: 1,
+            expires: block.timestamp + 1 hours,
+            commitments: commitments
+        });
+
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(token),
+            minimumFillAmount: 50e18,
+            recipient: filler,
+            applyScaling: false
+        });
+
+        FillParameters memory mandate = FillParameters({
+            chainId: 42161,
+            tribunal: address(arbTribunal),
+            expires: block.timestamp + 1 hours,
+            components: components,
+            baselinePriorityFee: 1 gwei,
+            scalingFactor: BASE_SCALING_FACTOR,
+            priceCurve: new uint256[](0),
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(0)
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            targetBlock: block.number,
+            fillIndex: 0,
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(uint256(uint160(filler))),
+            adjustmentAuthorization: ""
+        });
+
+        return (compact, mandate, adjustment);
+    }
+
+    function _signArbitrumAdjustment(
+        Tribunal arbTribunal,
+        BatchCompact memory compact,
+        FillParameters memory mandate,
+        Adjustment memory adjustment
+    ) internal view {
+        FillParameters[] memory fills = new FillParameters[](1);
+        fills[0] = mandate;
+
+        bytes32 mandateHash =
+            arbTribunal.deriveMandateHash(Mandate({adjuster: adjuster, fills: fills}));
+        bytes32 claimHash = arbTribunal.deriveClaimHash(compact, mandateHash);
+
+        bytes32 adjustmentHash = keccak256(
+            abi.encode(
+                ADJUSTMENT_TYPEHASH,
+                claimHash,
+                adjustment.fillIndex,
+                adjustment.targetBlock,
+                keccak256(abi.encodePacked(adjustment.supplementalPriceCurve)),
+                adjustment.validityConditions
+            )
+        );
+
+        bytes32 domainSeparator = keccak256(
+            abi.encode(
+                keccak256(
+                    "EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
+                ),
+                keccak256("Tribunal"),
+                keccak256("1"),
+                42161,
+                address(arbTribunal)
+            )
+        );
+
+        bytes32 digest = keccak256(abi.encodePacked("\x19\x01", domainSeparator, adjustmentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(adjusterPrivateKey, digest);
+        adjustment.adjustmentAuthorization = abi.encodePacked(r, s, v);
     }
 
     /**
