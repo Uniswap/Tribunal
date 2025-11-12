@@ -183,8 +183,8 @@ contract TribunalE2ETest is DeployTheCompact {
         uint96 allocatorIdChain1Temp = theCompactChain1.__registerAllocator(allocator, "");
         bytes12 lockTagChain1Temp = bytes12(uint96(allocatorIdChain1Temp));
 
-        uint256 chain1SnapshotId = vm.snapshot();
-        vm.revertTo(initialState);
+        uint256 chain1SnapshotId = vm.snapshotState();
+        vm.revertToState(initialState);
 
         return (
             address(theCompactChain1),
@@ -223,7 +223,7 @@ contract TribunalE2ETest is DeployTheCompact {
             "deployment address for The Compact differs across chains"
         );
 
-        uint256 chain2SnapshotId = vm.snapshot();
+        uint256 chain2SnapshotId = vm.snapshotState();
 
         return (
             address(tribunalChain2Temp),
@@ -246,7 +246,7 @@ contract TribunalE2ETest is DeployTheCompact {
         filler = address(0x4);
         recipient = address(0x5);
 
-        uint256 initialState = vm.snapshot();
+        uint256 initialState = vm.snapshotState();
 
         (
             address theCompactChain1Addr,
@@ -295,10 +295,10 @@ contract TribunalE2ETest is DeployTheCompact {
     {
         // Save current chain2 state before switching
         if (block.chainid == CHAIN_2) {
-            chain2Snapshot = vm.snapshot();
+            chain2Snapshot = vm.snapshotState();
         }
         vm.chainId(CHAIN_1);
-        vm.revertTo(chain1Snapshot);
+        vm.revertToState(chain1Snapshot);
         return (chain1Snapshot, chain2Snapshot);
     }
 
@@ -308,10 +308,10 @@ contract TribunalE2ETest is DeployTheCompact {
     {
         // Save current chain1 state before switching
         if (block.chainid == CHAIN_1) {
-            chain1Snapshot = vm.snapshot();
+            chain1Snapshot = vm.snapshotState();
         }
         vm.chainId(CHAIN_2);
-        vm.revertTo(chain2Snapshot);
+        vm.revertToState(chain2Snapshot);
         return (chain1Snapshot, chain2Snapshot);
     }
 

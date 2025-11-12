@@ -671,4 +671,188 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
         tribunal.cancelAndDispatch(claim.compact, mandateHash, dispatchParams);
     }
+
+    function test_FillAndDispatch_ReturnsExcessETH() public {
+        (
+            BatchClaim memory claim,
+            FillParameters memory fill,
+            Adjustment memory adjustment,
+            bytes32[] memory fillHashes,
+            bytes32 mandateHash,
+            bytes32 claimHash
+        ) = _setupFill();
+
+        bytes memory adjustmentSignature = _signAdjustment(adjustment, claimHash);
+
+        // Set up expected values in the mock
+        uint256[] memory expectedAmounts = new uint256[](1);
+        expectedAmounts[0] = 100e18;
+
+        uint256 targetChainId = 42161; // Arbitrum
+        bytes memory context = abi.encode("test context");
+
+        dispatchTarget.setExpectedValues(
+            targetChainId,
+            claim.compact,
+            mandateHash,
+            claimHash,
+            bytes32(uint256(uint160(address(filler)))),
+            1e18, // No reduction
+            expectedAmounts,
+            context
+        );
+
+        // Dispatch target will receive 0.5 ether, but we send 2 ether to tribunal
+        // The excess 1.5 ether should be returned to filler
+        DispatchParameters memory dispatchParams = DispatchParameters({
+            chainId: targetChainId,
+            target: address(dispatchTarget),
+            value: 0.5 ether,
+            context: context
+        });
+
+        vm.prank(address(filler));
+        token.approve(address(tribunal), type(uint256).max);
+
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
+        // Record filler's balance before
+        uint256 fillerBalanceBefore = address(filler).balance;
+
+        // Send 2 ether, but only 0.5 ether will be used by dispatch callback
+        vm.prank(address(filler));
+        tribunal.fillAndDispatch{
+            value: 2 ether
+        }(
+            claim.compact,
+            fill,
+            adjustment,
+            fillHashes,
+            bytes32(uint256(uint160(address(filler)))),
+            0,
+            dispatchParams
+        );
+
+        // Verify callback was called with correct value
+        assertTrue(dispatchTarget.callbackCalled());
+        assertEq(dispatchTarget.receivedValue(), 0.5 ether);
+
+        // Verify excess ETH (1.5 ether) was returned to filler
+        uint256 fillerBalanceAfter = address(filler).balance;
+        assertEq(fillerBalanceAfter, fillerBalanceBefore - 0.5 ether, "Excess ETH not returned");
+    }
+
+    function test_Dispatch_ReturnsExcessETH() public {
+        (
+            BatchClaim memory claim,
+            FillParameters memory fill,
+            Adjustment memory adjustment,
+            bytes32[] memory fillHashes,
+            bytes32 mandateHash,
+            bytes32 claimHash
+        ) = _setupFill();
+
+        bytes memory adjustmentSignature = _signAdjustment(adjustment, claimHash);
+
+        vm.prank(address(filler));
+        token.approve(address(tribunal), type(uint256).max);
+
+        adjustment.adjustmentAuthorization = adjustmentSignature;
+
+        // First, perform the fill
+        vm.prank(address(filler));
+        tribunal.fill(
+            claim.compact,
+            fill,
+            adjustment,
+            fillHashes,
+            bytes32(uint256(uint160(address(filler)))),
+            0
+        );
+
+        // Now dispatch separately with excess ETH
+        uint256 targetChainId = 137; // Polygon
+        bytes memory context = abi.encode("separate dispatch");
+
+        uint256[] memory expectedAmounts = new uint256[](1);
+        expectedAmounts[0] = 100e18;
+
+        dispatchTarget.reset();
+        dispatchTarget.setExpectedValues(
+            targetChainId,
+            claim.compact,
+            mandateHash,
+            claimHash,
+            bytes32(uint256(uint160(address(filler)))),
+            1e18,
+            expectedAmounts,
+            context
+        );
+
+        // Dispatch target will receive 0.3 ether, but we send 1 ether to tribunal
+        DispatchParameters memory dispatchParams = DispatchParameters({
+            chainId: targetChainId,
+            target: address(dispatchTarget),
+            value: 0.3 ether,
+            context: context
+        });
+
+        // Record filler's balance before
+        uint256 fillerBalanceBefore = address(filler).balance;
+
+        // Send 1 ether, but only 0.3 ether will be used
+        vm.prank(address(filler));
+        tribunal.dispatch{value: 1 ether}(claim.compact, mandateHash, dispatchParams);
+
+        assertTrue(dispatchTarget.callbackCalled());
+        assertEq(dispatchTarget.receivedValue(), 0.3 ether);
+
+        // Verify excess ETH (0.7 ether) was returned to filler
+        uint256 fillerBalanceAfter = address(filler).balance;
+        assertEq(fillerBalanceAfter, fillerBalanceBefore - 0.3 ether, "Excess ETH not returned");
+    }
+
+    function test_CancelAndDispatch_ReturnsExcessETH() public {
+        (BatchClaim memory claim,,,, bytes32 mandateHash, bytes32 claimHash) = _setupFill();
+
+        uint256 targetChainId = 10; // Optimism
+        bytes memory context = abi.encode("cancel dispatch");
+
+        // Set up expected values with zero amounts (cancelled)
+        uint256[] memory expectedAmounts = new uint256[](1);
+        expectedAmounts[0] = 0; // Cancelled, so zero amounts
+
+        dispatchTarget.setExpectedValues(
+            targetChainId,
+            claim.compact,
+            mandateHash,
+            claimHash,
+            bytes32(uint256(uint160(sponsor))), // Sponsor is claimant for cancel
+            0, // Scaling factor is 0 for cancelled claims
+            expectedAmounts,
+            context
+        );
+
+        // Dispatch target will receive 0.2 ether, but we send 1.5 ether to tribunal
+        DispatchParameters memory dispatchParams = DispatchParameters({
+            chainId: targetChainId,
+            target: address(dispatchTarget),
+            value: 0.2 ether,
+            context: context
+        });
+
+        // Record sponsor's balance before
+        uint256 sponsorBalanceBefore = sponsor.balance;
+
+        // Send 1.5 ether, but only 0.2 ether will be used
+        vm.prank(sponsor);
+        tribunal.cancelAndDispatch{value: 1.5 ether}(claim.compact, mandateHash, dispatchParams);
+
+        assertTrue(dispatchTarget.callbackCalled());
+        assertEq(dispatchTarget.receivedValue(), 0.2 ether);
+
+        // Verify excess ETH (1.3 ether) was returned to sponsor
+        uint256 sponsorBalanceAfter = sponsor.balance;
+        assertEq(sponsorBalanceAfter, sponsorBalanceBefore - 0.2 ether, "Excess ETH not returned");
+    }
 }

@@ -260,8 +260,10 @@ $ forge snapshot --isolate
 
 ### Code Coverage
 ```shell
-$ forge coverage
+$ FOUNDRY_PROFILE=coverage forge coverage --exclude-tests
 ```
+
+add ` --report lcov` to generate a coverage report and use `genhtml lcov.info --output-directory coverage; open coverage/index.html` to view it.
 
 ### Deploy
 
