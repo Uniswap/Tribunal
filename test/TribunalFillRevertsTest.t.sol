@@ -332,4 +332,66 @@ contract TribunalFillRevertsTest is Test {
             claim.compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0
         );
     }
+
+    function test_FillRevertsOnInvalidPriceCurveParameters_OppositeScalingDirections() public {
+        // Set proper gas environment
+        vm.fee(1 gwei);
+        vm.txGasPrice(2 gwei);
+
+        // Create a price curve that produces currentScalingFactor < 1e18 (exact-out, decreasing claims)
+        uint256[] memory priceCurve = new uint256[](1);
+        // blockDuration = 10, scalingFactor = 0.7e18 (below 1e18, indicating decreasing claim amounts)
+        priceCurve[0] = (uint256(10) << 240) | uint256(0.7e18);
+
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0),
+            minimumFillAmount: 1 ether,
+            recipient: address(0xCAFE),
+            applyScaling: true
+        });
+
+        // Use scalingFactor > 1e18 (exact-in mode, increasing fills)
+        // This conflicts with price curve < 1e18 (decreasing claims)
+        FillParameters memory fill = FillParameters({
+            chainId: block.chainid,
+            tribunal: address(tribunal),
+            expires: block.timestamp + 1 days,
+            components: components,
+            baselinePriorityFee: 0,
+            scalingFactor: 1.5e18, // > 1e18 (exact-in)
+            priceCurve: priceCurve,
+            recipientCallback: new RecipientCallback[](0),
+            salt: bytes32(uint256(1))
+        });
+
+        Lock[] memory commitments = new Lock[](1);
+        commitments[0] = Lock({lockTag: bytes12(0), token: address(0), amount: 2 ether});
+
+        BatchCompact memory compact = BatchCompact({
+            arbiter: address(this),
+            sponsor: sponsor,
+            nonce: 0,
+            expires: block.timestamp + 1 hours,
+            commitments: commitments
+        });
+
+        Adjustment memory adjustment = Adjustment({
+            adjuster: adjuster,
+            fillIndex: 0,
+            targetBlock: vm.getBlockNumber(),
+            supplementalPriceCurve: new uint256[](0),
+            validityConditions: bytes32(0),
+            adjustmentAuthorization: new bytes(0)
+        });
+
+        bytes32[] memory fillHashes = new bytes32[](1);
+        fillHashes[0] = tribunal.deriveFillHash(fill);
+
+        // Expect revert with InvalidPriceCurveParameters
+        vm.expectRevert(abi.encodeWithSignature("InvalidPriceCurveParameters()"));
+        tribunal.fill{
+            value: 1 ether
+        }(compact, fill, adjustment, fillHashes, bytes32(uint256(uint160(address(this)))), 0);
+    }
 }

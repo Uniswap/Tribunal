@@ -230,4 +230,94 @@ contract TribunalViewFunctionsTest is Test {
 
         assertTrue(claimHash != bytes32(0), "Claim hash should not be zero");
     }
+
+    function test_deriveAmountsFromComponents_revertsOnOppositeScalingDirections() public {
+        // Set up proper gas environment to avoid underflow in priority fee calculations
+        vm.fee(1 gwei);
+        vm.txGasPrice(2 gwei);
+
+        // Create a price curve that will produce a currentScalingFactor < 1e18
+        // Using PriceCurveLib to create a proper price curve element
+        uint256[] memory priceCurve = new uint256[](1);
+        // blockDuration = 10, scalingFactor = 0.7e18 (below 1e18, indicating decreasing claim amounts)
+        priceCurve[0] = (uint256(10) << 240) | uint256(0.7e18);
+
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0x1234),
+            minimumFillAmount: 1 ether,
+            recipient: address(0x5678),
+            applyScaling: true
+        });
+
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] =
+            Lock({lockTag: bytes12(0), token: address(0x1234), amount: 2 ether});
+
+        // Set scalingFactor to > 1e18 (exact-in mode, increasing fills)
+        // but currentScalingFactor will be < 1e18 from price curve (decreasing claims)
+        // At targetBlock (blocksPassed=0), currentScalingFactor will be 0.7e18
+        // This creates opposite scaling directions and should revert
+        uint256 scalingFactor = 1.5e18; // > 1e18 (exact-in)
+        uint256 targetBlock = 1000;
+        uint256 fillBlock = 1000; // At start of curve
+        uint256 baselinePriorityFee = 0;
+
+        // Expect revert with InvalidPriceCurveParameters
+        vm.expectRevert(abi.encodeWithSignature("InvalidPriceCurveParameters()"));
+        tribunal.deriveAmountsFromComponents(
+            maximumClaimAmounts,
+            components,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            baselinePriorityFee,
+            scalingFactor
+        );
+    }
+
+    function test_deriveAmountsFromComponents_revertsOnOppositeScalingDirections_exactOut() public {
+        // Set up proper gas environment to avoid underflow in priority fee calculations
+        vm.fee(1 gwei);
+        vm.txGasPrice(2 gwei);
+
+        // Create a price curve that will produce a currentScalingFactor > 1e18
+        // Using PriceCurveLib to create a proper price curve element
+        uint256[] memory priceCurve = new uint256[](1);
+        // blockDuration = 10, scalingFactor = 1.5e18 (above 1e18, indicating increasing fill amounts)
+        priceCurve[0] = (uint256(10) << 240) | uint256(1.5e18);
+
+        FillComponent[] memory components = new FillComponent[](1);
+        components[0] = FillComponent({
+            fillToken: address(0x1234),
+            minimumFillAmount: 1 ether,
+            recipient: address(0x5678),
+            applyScaling: true
+        });
+
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] =
+            Lock({lockTag: bytes12(0), token: address(0x1234), amount: 2 ether});
+
+        // Set scalingFactor to < 1e18 (exact-out mode, decreasing claims)
+        // but currentScalingFactor will be > 1e18 from price curve (increasing fills)
+        // At targetBlock (blocksPassed=0), currentScalingFactor will be 1.5e18
+        // This creates opposite scaling directions and should revert
+        uint256 scalingFactor = 0.7e18; // < 1e18 (exact-out)
+        uint256 targetBlock = 1000;
+        uint256 fillBlock = 1000; // At start of curve
+        uint256 baselinePriorityFee = 0;
+
+        // Expect revert with InvalidPriceCurveParameters
+        vm.expectRevert(abi.encodeWithSignature("InvalidPriceCurveParameters()"));
+        tribunal.deriveAmountsFromComponents(
+            maximumClaimAmounts,
+            components,
+            priceCurve,
+            targetBlock,
+            fillBlock,
+            baselinePriorityFee,
+            scalingFactor
+        );
+    }
 }
