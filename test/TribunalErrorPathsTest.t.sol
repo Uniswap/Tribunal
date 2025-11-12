@@ -304,6 +304,108 @@ contract TribunalErrorPathsTest is Test {
     }
 
     /**
+     * @notice Test reentrancy guard status reading during protected call
+     * @dev Verifies the reentrancy guard status can be read during callback
+     */
+    function test_ReentrancyGuardStatus_DuringCallback() public {
+        // First, cancel a compact to set its disposition
+        BatchCompact memory compact = _createBasicCompact();
+
+        FillParameters[] memory fills = new FillParameters[](0);
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: fills});
+        bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+
+        // Cancel the compact (sets disposition)
+        vm.prank(sponsor);
+        tribunal.cancel(compact, mandateHash);
+
+        // Deploy a checker that will verify reentrancy status during dispatch
+        ReentrancyStatusChecker checker = new ReentrancyStatusChecker(address(tribunal));
+
+        DispatchParameters memory dispatchParams = DispatchParameters({
+            chainId: block.chainid, target: address(checker), value: 0, context: ""
+        });
+
+        // Dispatch - the checker will read reentrancy status during the callback
+        vm.prank(address(this));
+        tribunal.dispatch(compact, mandateHash, dispatchParams);
+
+        // Verify the checker recorded that the status was set to our address
+        assertEq(
+            checker.recordedStatus(), address(this), "Should record caller address during callback"
+        );
+    }
+
+    /**
+     * @notice Test reentrancy guard revert when attempting to reenter
+     * @dev Covers lines 107-108 by triggering the actual reentrancy guard revert
+     */
+    function test_ReentrancyGuard_Revert() public {
+        // First, cancel a compact to set its disposition
+        BatchCompact memory compact = _createBasicCompact();
+
+        FillParameters[] memory fills = new FillParameters[](0);
+        Mandate memory mandate = Mandate({adjuster: adjuster, fills: fills});
+        bytes32 mandateHash = tribunal.deriveMandateHash(mandate);
+
+        // Cancel the compact (sets disposition)
+        vm.prank(sponsor);
+        tribunal.cancel(compact, mandateHash);
+
+        // Deploy a reentrant callback that tries to call another protected function
+        ReentrancyAttacker attacker = new ReentrancyAttacker(address(tribunal), mandateHash);
+
+        DispatchParameters memory dispatchParams = DispatchParameters({
+            chainId: block.chainid, target: address(attacker), value: 0, context: ""
+        });
+
+        // Dispatch - the attacker will try to reenter via cancel()
+        // This should trigger the ReentrancyGuard() revert on lines 107-108
+        vm.expectRevert(abi.encodeWithSignature("ReentrancyGuard()"));
+        tribunal.dispatch(compact, mandateHash, dispatchParams);
+    }
+
+    /**
+     * @notice Test Arbitrum block number path
+     * @dev Covers line 16 by mocking IArbSys precompile and performing a fill on Arbitrum
+     */
+    function test_ArbitrumBlockNumber() public {
+        // Mock the IArbSys precompile
+        address arbSysAddress = address(0x0000000000000000000000000000000000000064);
+
+        // Create mock that returns a specific block number
+        vm.mockCall(
+            arbSysAddress, abi.encodeWithSignature("arbBlockNumber()"), abi.encode(uint256(12345))
+        );
+
+        // Set chain ID to Arbitrum
+        vm.chainId(42161);
+
+        // Deploy a new tribunal on "Arbitrum"
+        Tribunal arbTribunal = new Tribunal();
+
+        Lock[] memory maximumClaimAmounts = new Lock[](1);
+        maximumClaimAmounts[0] =
+            Lock({lockTag: bytes12(uint96(1)), token: address(token), amount: 100e18});
+
+        // Call deriveAmounts which internally calls _validateFillBlock -> _getBlockNumberish
+        // Use fillBlock = 0 which will use current block from _getBlockNumberish()
+        arbTribunal.deriveAmounts(
+            maximumClaimAmounts,
+            new uint256[](0),
+            0, // no target block
+            0, // fillBlock = 0 triggers _getBlockNumberish() call
+            50e18,
+            1 gwei,
+            BASE_SCALING_FACTOR
+        );
+
+        // If we got here without reverting, the Arbitrum path was successfully executed
+        // Reset chain ID
+        vm.chainId(31337);
+    }
+
+    /**
      * @notice Test deriveAmountsFromComponents with applyScaling components
      * @dev Covers additional branches in _calculateFillAmounts
      */
@@ -393,5 +495,61 @@ contract TribunalErrorPathsTest is Test {
             validityConditions: bytes32(uint256(uint160(filler))),
             adjustmentAuthorization: ""
         });
+    }
+}
+
+/**
+ * @notice Helper contract to check reentrancy guard status during a callback
+ */
+contract ReentrancyStatusChecker {
+    Tribunal public tribunal;
+    address public recordedStatus;
+
+    constructor(address _tribunal) {
+        tribunal = Tribunal(payable(_tribunal));
+    }
+
+    function dispatchCallback(
+        uint256,
+        BatchCompact calldata,
+        bytes32,
+        bytes32,
+        bytes32,
+        uint256,
+        uint256[] calldata,
+        bytes calldata
+    ) external returns (bytes4) {
+        // Check the reentrancy guard status during the callback
+        recordedStatus = tribunal.reentrancyGuardStatus();
+        return this.dispatchCallback.selector;
+    }
+}
+
+/**
+ * @notice Helper contract that attempts to reenter a protected function
+ */
+contract ReentrancyAttacker {
+    Tribunal public tribunal;
+    bytes32 public mandateHash;
+
+    constructor(address _tribunal, bytes32 _mandateHash) {
+        tribunal = Tribunal(payable(_tribunal));
+        mandateHash = _mandateHash;
+    }
+
+    function dispatchCallback(
+        uint256,
+        BatchCompact calldata compact,
+        bytes32,
+        bytes32,
+        bytes32,
+        uint256,
+        uint256[] calldata,
+        bytes calldata
+    ) external returns (bytes4) {
+        // Attempt to reenter by calling cancel (another nonReentrant function)
+        // Use the compact passed in via calldata
+        tribunal.cancel(compact, mandateHash);
+        return this.dispatchCallback.selector;
     }
 }
