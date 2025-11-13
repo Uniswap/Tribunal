@@ -5,17 +5,23 @@ import {FixedPointMathLib} from "solady/utils/FixedPointMathLib.sol";
 import {EfficiencyLib} from "the-compact/src/lib/EfficiencyLib.sol";
 
 /**
- * @title PriceCurveLib
- * @dev Custom type for price curve parameters with bit-packed values
+ * @title PriceCurveElement
+ * @notice Custom type for price curve parameters with bit-packed values.
+ * @dev Each element packs two values into a single uint256:
+ *      - blockDuration (16 bits): Duration in blocks for this curve segment
+ *      - scalingFactor (240 bits): Scaling factor to apply during this segment (1e18 = neutral)
  */
 type PriceCurveElement is uint256;
 
 /**
  * @title PriceCurveLib
+ * @author 0age
  * @custom:security-contact security@uniswap.org
- * @dev Library for the DecayParameter type which packs three values:
- *      - blockDuration (16 bits): Duration in blocks
- *      - scalingFactor (240 bits): additional scaling factor to apply to fill increase or claim decrease
+ * @notice Library for managing time-based price curves in Tribunal auctions.
+ * @dev Provides functionality for creating, manipulating, and evaluating price curves that define how
+ * auction prices evolve over time. Supports linear interpolation between discrete points, instant price
+ * jumps via zero-duration segments, and combining base curves with supplemental adjustments from adjusters.
+ * Each PriceCurveElement packs a block duration (16 bits) and scaling factor (240 bits) into a single uint256.
  */
 library PriceCurveLib {
     using PriceCurveLib for uint256;
@@ -34,13 +40,15 @@ library PriceCurveLib {
 
     // Bit masks
     uint256 private constant SCALING_FACTOR_MASK = ((1 << SCALING_FACTOR_BITS) - 1);
-    /**
-     * @dev Create a new PriceCurveElement from individual components
-     * @param blockDuration Duration in blocks (16 bits)
-     * @param scalingFactor Additional scaling factor to apply to fill increase or claim decrease
-     * @return The packed PriceCurveElement
-     */
 
+    /**
+     * @notice Creates a new PriceCurveElement from individual components.
+     * @dev Packs the block duration (16 bits) and scaling factor (240 bits) into a single uint256.
+     * The scaling factor represents the price multiplier for this segment (1e18 = neutral/100%).
+     * @param blockDuration Duration in blocks for this curve segment (16 bits).
+     * @param scalingFactor Scaling factor to apply during this segment (240 bits, 1e18 = neutral).
+     * @return The packed PriceCurveElement containing both values.
+     */
     function create(uint16 blockDuration, uint240 scalingFactor)
         internal
         pure
@@ -52,28 +60,32 @@ library PriceCurveLib {
     }
 
     /**
-     * @dev Get the blockDuration value
-     * @param self The PriceCurveElement
-     * @return The blockDuration as uint256
+     * @notice Extracts the block duration from a PriceCurveElement.
+     * @dev Unpacks and shifts the upper 16 bits to retrieve the duration value.
+     * @param self The PriceCurveElement to extract from.
+     * @return The block duration as uint256 (originally 16 bits).
      */
     function getBlockDuration(PriceCurveElement self) internal pure returns (uint256) {
         return PriceCurveElement.unwrap(self) >> BLOCK_DURATION_SHIFT;
     }
 
     /**
-     * @dev Get the scalingFactor value
-     * @param self The PriceCurveElement
-     * @return The scaling factor as uint256
+     * @notice Extracts the scaling factor from a PriceCurveElement.
+     * @dev Unpacks and masks the lower 240 bits to retrieve the scaling factor value.
+     * @param self The PriceCurveElement to extract from.
+     * @return The scaling factor as uint256 (originally 240 bits, 1e18 = neutral).
      */
     function getFillIncrease(PriceCurveElement self) internal pure returns (uint256) {
         return PriceCurveElement.unwrap(self) & SCALING_FACTOR_MASK;
     }
 
     /**
-     * @dev Get all components at once
-     * @param self The PriceCurve element
-     * @return blockDuration The blockDuration value
-     * @return scalingFactor The scaling factor as uint256
+     * @notice Extracts both block duration and scaling factor from a PriceCurveElement in a single call.
+     * @dev More gas-efficient than calling getBlockDuration and getFillIncrease separately.
+     * Unpacks the uint256 by shifting for duration and masking for scaling factor.
+     * @param self The PriceCurveElement to extract from.
+     * @return blockDuration The block duration value (originally 16 bits).
+     * @return scalingFactor The scaling factor value (originally 240 bits, 1e18 = neutral).
      */
     function getComponents(PriceCurveElement self)
         internal
@@ -88,6 +100,17 @@ library PriceCurveLib {
         return (blockDuration, scalingFactor);
     }
 
+    /**
+     * @notice Combines a base price curve with a supplemental price curve from the adjuster.
+     * @dev Applies the adjuster's supplemental curve by adding scaling factors and subtracting 1e18 to maintain
+     * proper scaling: combinedScalingFactor = baseScalingFactor + supplementalScalingFactor - 1e18.
+     * This allows the adjuster to modify prices dynamically while preserving the sponsor's base curve structure.
+     * Validates that both curves scale in the same direction and that combined values don't overflow 240 bits.
+     * If supplemental curve is shorter, base curve values are used for remaining segments.
+     * @param parameters The base price curve array (calldata).
+     * @param supplementalParameters The supplemental price curve array from the adjuster (calldata).
+     * @return combinedParameters The combined price curve array with adjusted scaling factors.
+     */
     function applySupplementalPriceCurve(
         uint256[] calldata parameters,
         uint256[] calldata supplementalParameters
@@ -118,6 +141,17 @@ library PriceCurveLib {
         }
     }
 
+    /**
+     * @notice Combines a base price curve with a supplemental price curve (memory version).
+     * @dev Memory-based variant of applySupplementalPriceCurve for cases where curves are already in memory.
+     * Applies the adjuster's supplemental curve by adding scaling factors and subtracting 1e18 to maintain
+     * proper scaling: combinedScalingFactor = baseScalingFactor + supplementalScalingFactor - 1e18.
+     * Validates that both curves scale in the same direction and that combined values don't overflow 240 bits.
+     * If supplemental curve is shorter, base curve values are used for remaining segments.
+     * @param parameters The base price curve array (memory).
+     * @param supplementalParameters The supplemental price curve array from the adjuster (memory).
+     * @return combinedParameters The combined price curve array with adjusted scaling factors.
+     */
     function applyMemorySupplementalPriceCurve(
         uint256[] memory parameters,
         uint256[] memory supplementalParameters
@@ -149,10 +183,14 @@ library PriceCurveLib {
     }
 
     /**
-     * @dev Calculate the current scaling factor value based on block progression
-     * @param parameters Array of DecayParameters to process sequentially
-     * @param blocksPassed Number of blocks that have already passed
-     * @return currentScalingFactor The current scaling factor value
+     * @notice Calculates the current scaling factor based on blocks elapsed since auction start.
+     * @dev Processes the price curve array sequentially to determine the current price based on block progression.
+     * Supports linear interpolation between discrete curve points for gradual price transitions, and zero-duration
+     * segments that enable instant price jumps at specific blocks. The final segment defaults to 1e18 (neutral)
+     * if the auction extends beyond the specified curve duration. Reverts if blocks elapsed exceeds total curve duration.
+     * @param parameters Array of PriceCurveElements defining the curve segments.
+     * @param blocksPassed Number of blocks elapsed since the auction start (targetBlock).
+     * @return currentScalingFactor The calculated scaling factor for the current block (1e18 = neutral).
      */
     function getCalculatedValues(uint256[] memory parameters, uint256 blocksPassed)
         internal
@@ -262,24 +300,20 @@ library PriceCurveLib {
     }
 
     /**
-     * @dev Private pure function to derive the current amount of a given item
-     *      based on the current price, the starting price, and the ending
-     *      price. If the start and end prices differ, the current price will be
-     *      interpolated on a linear basis. Note that this function expects that
-     *      the startBlock parameter is not greater than the current block number
-     *      and that the endBlock parameter is greater than the current block
-     *      number. If this condition is not upheld, duration / elapsed / remaining
-     *      variables will underflow.
-     *
-     * @param startAmount  The starting amount of the item.
-     * @param endAmount    The ending amount of the item.
-     * @param startBlock   The indicated starting block.
-     * @param currentBlock The indicated current block.
-     * @param endBlock     The indicated end block.
-     * @param roundUp      A boolean indicating whether the resultant amount
-     *                     should be rounded up or down.
-     *
-     * @return amount The current amount.
+     * @notice Performs linear interpolation to derive the current scaling factor between two points.
+     * @dev Private pure function that interpolates between start and end amounts based on block progression.
+     * If start and end amounts are equal, returns the end amount without calculation. Otherwise, performs
+     * weighted interpolation: ((startAmount × remaining) + (endAmount × elapsed)) / duration.
+     * The roundUp parameter controls rounding direction: up for exact-in mode (increasing fills), down for
+     * exact-out mode (decreasing claims).
+     * IMPORTANT: This function expects startBlock ≤ currentBlock < endBlock; violating this causes underflow.
+     * @param startAmount The starting scaling factor value at the segment start.
+     * @param endAmount The ending scaling factor value at the segment end.
+     * @param startBlock The block number where this segment begins.
+     * @param currentBlock The current block number within the segment.
+     * @param endBlock The block number where this segment ends.
+     * @param roundUp Whether to round up (true for exact-in) or down (false for exact-out).
+     * @return amount The interpolated scaling factor for the current block.
      */
     function _locateCurrentAmount(
         uint256 startAmount,
@@ -335,12 +369,17 @@ library PriceCurveLib {
     }
 
     /**
-     * @notice Checks whether two values are on the same side of the threshold (1e18),
-     *         or if either value is exactly equal to 1e18.
-     * @dev Returns false only if one value is strictly less than 1e18 and the other strictly greater.
-     * @param a The first value to check.
-     * @param b The second value to check.
-     * @return result True if values are equal to 1e18 or both on the same side of it; false otherwise.
+     * @notice Validates that two scaling factors scale in the same direction (both exact-in or both exact-out).
+     * @dev Checks whether two values are on the same side of the neutral threshold (1e18), or if either equals 1e18.
+     * Returns true if:
+     * - Either value equals 1e18 (neutral scaling)
+     * - Both values are > 1e18 (both exact-in mode)
+     * - Both values are < 1e18 (both exact-out mode)
+     * Returns false only if one value is strictly < 1e18 and the other strictly > 1e18, indicating incompatible
+     * scaling directions. This validation ensures price curves don't switch between exact-in and exact-out modes.
+     * @param a The first scaling factor to check.
+     * @param b The second scaling factor to check.
+     * @return result True if compatible scaling directions; false if incompatible (one exact-in, one exact-out).
      */
     function sharesScalingDirection(uint256 a, uint256 b) internal pure returns (bool result) {
         assembly {
