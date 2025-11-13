@@ -2,6 +2,8 @@
 
 **Tribunal** is a protocol that runs competitive auctions for claims against resource locks. It integrates with **The Compact** for settling claims after fills occur.
 
+⚠️ Tribunal is still considered **Proof-Of-Concept** at this stage; more development, testing, and review is required before it reaches production-readiness.
+
 ## Overview
 
 Tribunal serves three core roles:

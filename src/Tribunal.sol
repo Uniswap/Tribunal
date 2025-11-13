@@ -50,9 +50,7 @@ import {
  * @author 0age
  * @custom:version 0 (Proof-of-concept)
  * @custom:security-contact security@uniswap.org
- * @notice Tribunal is a protocol for processing cross-chain swap settlements against PGA (priority gas auction)
- * blockchains. It ensures that tokens are transferred according to the mandate specified by the originating sponsor
- * and enforces that a single party is able to perform the fill in the event of a dispute.
+ * @notice Tribunal is a protocol that runs competitive auctions for claims against resource locks. It integrates with The Compact as the mechanism for settling claims after fills occur.
  * @dev This contract is under active development; contributions, reviews, and feedback are greatly appreciated.
  */
 contract Tribunal is BlockNumberish, ITribunal {
@@ -73,7 +71,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     ITheCompact public constant THE_COMPACT =
         ITheCompact(0x00000000000000171ede64904551eeDF3C6C9788);
 
-    /// @notice Base scaling factor (1e18).
+    /// @notice Base scaling factor (1e18 = neutral, no scaling).
     uint256 public constant BASE_SCALING_FACTOR = 1e18;
 
     /// @notice keccak256("_REENTRANCY_GUARD_SLOT")
@@ -93,10 +91,10 @@ contract Tribunal is BlockNumberish, ITribunal {
     bytes32 private immutable _INITIAL_DOMAIN_SEPARATOR;
 
     // ======== Storage ========
-    /// @notice Mapping of used claim hashes to claimants.
+    /// @notice Mapping of claim hashes to claimants (or sponsor if cancelled).
     mapping(bytes32 => bytes32) private _dispositions;
 
-    /// @notice Mapping of claim hashes to claim reduction scaling factors (only set when < 1e18).
+    /// @notice Mapping of claim hashes to claim reduction scaling factors (only set when < 1e18 or cancelled).
     mapping(bytes32 => uint256) private _claimReductionScalingFactors;
 
     // ======== Modifiers ========
@@ -124,7 +122,13 @@ contract Tribunal is BlockNumberish, ITribunal {
         _INITIAL_DOMAIN_SEPARATOR = DomainLib.toCurrentDomainSeparator();
     }
 
-    /// Allow for receiving ETH.
+    /**
+     * @notice Fallback function to allow the contract to receive native tokens (ETH).
+     * @dev This is necessary for receiving native tokens during claimAndFill and
+     * settleOrRegister operations, for accounting for variable fill amount requirements
+     * based on the auction duration or transaction parameters, and for handling refunds
+     * of excess value sent during dispatch operations that require it.
+     */
     receive() external payable {}
 
     // ======== External Functions ========
@@ -342,6 +346,7 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @notice Returns the claim reduction scaling factor for a given claim hash.
+    /// @dev In exact-out mode, this factor indicates how much claim amounts were reduced due to competitive bidding.
     /// @param claimHash The claim hash to query.
     /// @return scalingFactor The scaling factor (returns 1e18 if not set, 0 if cancelled).
     function claimReductionScalingFactor(bytes32 claimHash)
@@ -697,16 +702,20 @@ contract Tribunal is BlockNumberish, ITribunal {
 
     /**
      * @notice Internal implementation of a standard fill.
+     * @dev Fillers must provide all required output tokens and have granted token approvals to Tribunal.
+     * Native tokens (ETH) must be included as msg.value. The function validates the mandate hasn't expired,
+     * verifies the adjuster's signature, validates validity conditions, calculates fill and claim amounts,
+     * marks the claim as filled, transfers tokens to recipients, and triggers recipient callbacks if specified.
      * @param compact The compact parameters.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
-     * @param fillHashes An array of the hashes of each fill.
+     * @param claimant The recipient of claimed tokens on the claim chain (lock tag ++ address).
+     * @param fillBlock The block number to target for the fill (must be current block).
+     * @param fillHashes An array of the hashes of each fill in the mandate.
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
      * @return fillAmounts The amounts of tokens to be filled for each component.
-     * @return claimAmounts The amount of tokens to be claimed.
+     * @return claimAmounts The amounts of each token to be claimed.
      */
     function _fill(
         BatchCompact calldata compact,
@@ -786,17 +795,22 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Internal implementation of same-chain fill with a preceding claim execution.
+     * @notice Internal implementation of atomic same-chain fill with a preceding claim execution.
+     * @dev This function operates atomically in a single transaction, unlike the asynchronous nature of standard fills.
+     * It optimistically releases input tokens to the filler first via a callback, then verifies they provided the output.
+     * The filler receives a callback while holding the input tokens, allowing them to use those tokens to generate
+     * the required output (flash loan-style). All output tokens must be provided to Tribunal upon exiting the callback.
+     * Only supported when the claim chain and fill chain are the same.
      * @param claim The compact parameters including signatures.
      * @param mandate The fill conditions and amount derivation parameters.
      * @param adjustment The adjustment provided by the adjuster for the fill (includes adjuster and authorization).
-     * @param claimant The recipient of claimed tokens on the claim chain.
-     * @param fillBlock The block number to target for the fill (0 allows any block).
-     * @param fillHashes An array of the hashes of each fill.
+     * @param claimant The recipient of claimed tokens on the claim chain (lock tag ++ address).
+     * @param fillBlock The block number to target for the fill (must be current block).
+     * @param fillHashes An array of the hashes of each fill in the mandate.
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
      * @return fillAmounts The amounts of tokens to be filled for each component.
-     * @return claimAmounts The amount of tokens to be claimed.
+     * @return claimAmounts The amounts of each token to be claimed.
      */
     function _claimAndFill(
         BatchClaim calldata claim,
@@ -913,6 +927,18 @@ contract Tribunal is BlockNumberish, ITribunal {
         mandateHash = _deriveMandateHash(mandate, adjuster, adjustment.fillIndex, fillHashes);
     }
 
+    /**
+     * @notice Triggers the recipient callback if one is specified in the mandate.
+     * @dev The recipient callback is signed by the sponsor as part of the mandate and executes
+     * automatically after fill token transfers are complete. It calls the first fill component's
+     * recipient address and must succeed and return the intended magic value (this function selector)
+     * for the fill to complete. Typically used for bridging fill tokens to destination chains or
+     * registering follow-up compacts.
+     * @param mandate The fill parameters containing the recipient callback specification.
+     * @param claimHash The hash of the claim being filled.
+     * @param mandateHash The hash of the mandate being executed.
+     * @param fillAmounts The amounts of tokens being filled for each component.
+     */
     function performRecipientCallback(
         FillParameters calldata mandate,
         bytes32 claimHash,
@@ -941,6 +967,21 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
     }
 
+    /**
+     * @notice Processes the claim through The Compact and triggers the tribunal callback to the filler.
+     * @dev This function constructs a batch claim, processes it through either the arbiter or The Compact
+     * directly when Tribunal is the arbiter, then triggers a callback to the filler (msg.sender) with fill
+     * requirements. The filler receives input tokens during the callback and must provide output tokens
+     * before it completes. This enables flash loan-style operations where the filler uses claimed tokens
+     * to generate required outputs.
+     * @param batchClaim The batch claim containing compact parameters and signatures.
+     * @param mandate The fill parameters with components and requirements.
+     * @param mandateHash The hash of the mandate being executed.
+     * @param fillAmounts The amounts to be filled for each component.
+     * @param claimant The claimant identifier (lock tag ++ address).
+     * @param claimAmounts The amounts to be claimed.
+     * @return claimHash The hash of the processed claim.
+     */
     function _processClaimAndCallback(
         BatchClaim calldata batchClaim,
         FillParameters calldata mandate,
@@ -1008,6 +1049,16 @@ contract Tribunal is BlockNumberish, ITribunal {
         return claimHash;
     }
 
+    /**
+     * @notice Internal function to cancel an unfilled auction.
+     * @dev Verifies the caller is the sponsor, derives the claim hash, ensures the claim hasn't been filled,
+     * marks it as cancelled by storing the sponsor as the claimant, stores type(uint256).max as the cancellation
+     * flag in the scaling factors mapping, and emits a Cancel event. This prevents other fillers from executing
+     * the auction on the target chain.
+     * @param compact The compact parameters.
+     * @param mandateHash The hash of the mandate to cancel.
+     * @return claimHash The hash of the cancelled claim.
+     */
     function _cancel(BatchCompact calldata compact, bytes32 mandateHash)
         internal
         returns (bytes32 claimHash)
@@ -1035,6 +1086,15 @@ contract Tribunal is BlockNumberish, ITribunal {
         return claimHash;
     }
 
+    /**
+     * @notice Transfers fill tokens from the filler to recipients for each component.
+     * @dev Handles both native tokens (ETH) and ERC20 tokens. For native tokens, transfers directly
+     * using safeTransferETH. For ERC20 tokens, uses safeTransferFrom from msg.sender to the recipient.
+     * NOTE: Settling fee-on-transfer tokens will result in fewer tokens being received by the recipient.
+     * Fillers must account for transfer fees when providing the desired fill amount.
+     * @param mandate The fill parameters containing components with recipients and token addresses.
+     * @param fillAmounts The amounts to transfer for each component.
+     */
     function _processFill(FillParameters calldata mandate, uint256[] memory fillAmounts) internal {
         // Process each fill component
         for (uint256 i = 0; i < mandate.components.length; i++) {
@@ -1333,6 +1393,15 @@ contract Tribunal is BlockNumberish, ITribunal {
             );
     }
 
+    /**
+     * @notice Checks the current token allowance granted to The Compact contract.
+     * @dev Calls the ERC20 allowance function to check how many tokens the owner
+     * has approved for The Compact to spend. Used to determine if additional approval
+     * is needed before depositing tokens.
+     * @param token The ERC20 token address to check allowance for.
+     * @param owner The address whose allowance to check.
+     * @return amount The current allowance amount, or 0 if the call fails.
+     */
     function _checkCompactAllowance(address token, address owner)
         internal
         view
@@ -1364,7 +1433,9 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Calculates the priority fee above the baseline.
+     * @notice Calculates the priority fee above the baseline for competitive pricing.
+     * @dev The baseline represents the threshold where competitive scaling begins. Any priority fee below
+     * this baseline has no effect on pricing. This is a core component of Priority Gas Auctions (PGA).
      * @param baselinePriorityFee The base fee threshold where scaling kicks in.
      * @return priorityFee The priority fee above baseline (or 0 if below).
      */
@@ -1385,12 +1456,15 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /**
-     * @notice Calculates the scaling multiplier and determines the mode (exact-in or exact-out).
+     * @notice Calculates the scaling multiplier due to priority fee and determines the auction mode (exact-in or exact-out).
+     * @dev Exact-in mode (scalingFactor >= 1e18): fill amounts increase, claim amounts stay at maximum.
+     * Exact-out mode (scalingFactor < 1e18): claim amounts decrease, fill amounts stay at minimum.
+     * When neutral (scalingFactor == 1e18), mode is determined from currentScalingFactor.
      * @param currentScalingFactor The current scaling factor from price curve.
-     * @param scalingFactor The scaling factor parameter.
+     * @param scalingFactor The scaling factor parameter from the mandate.
      * @param baselinePriorityFee The baseline priority fee.
      * @return scalingMultiplier The calculated scaling multiplier.
-     * @return useExactIn Whether to use exact-in mode.
+     * @return useExactIn Whether to use exact-in mode (true) or exact-out mode (false).
      */
     function _calculateScalingMultiplier(
         uint256 currentScalingFactor,
@@ -1489,9 +1563,12 @@ contract Tribunal is BlockNumberish, ITribunal {
     // ======== Internal Pure Functions ========
 
     /**
-     * @notice Calculates the current scaling factor from the price curve.
-     * @param priceCurve The price curve to apply.
-     * @param targetBlock The target block number.
+     * @notice Calculates the current scaling factor from the price curve based on blocks elapsed.
+     * @dev Uses linear interpolation between discrete curve points to support gradual price transitions.
+     * Zero-duration segments enable instant price jumps at specific blocks. If targetBlock is 0, no curve
+     * is applied and the function returns the base scaling factor (1e18).
+     * @param priceCurve The price curve to apply (array of duration/scaling-factor pairs).
+     * @param targetBlock The auction start block number.
      * @param fillBlock The fill block number.
      * @return currentScalingFactor The calculated current scaling factor.
      */
@@ -1546,6 +1623,14 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
     }
 
+    /**
+     * @notice Derives the hash of an array of commitments (locks) using EIP-712 typed data hashing.
+     * @dev Each commitment is hashed individually using the provided typehash, then the array of
+     * hashes is concatenated and hashed together.
+     * @param commitments The array of locks (commitments) to hash.
+     * @param typehash The EIP-712 typehash to use for each commitment.
+     * @return The hash of the commitments array.
+     */
     function _deriveCommitmentsHash(Lock[] calldata commitments, bytes32 typehash)
         internal
         pure
@@ -1562,6 +1647,16 @@ contract Tribunal is BlockNumberish, ITribunal {
         return keccak256(abi.encodePacked(commitmentsHashes));
     }
 
+    /**
+     * @notice Derives the EIP-712 hash of an adjustment for signature verification.
+     * @dev Constructs the adjustment hash using the ADJUSTMENT_TYPEHASH and all adjustment parameters
+     * including the claim hash, fill index, target block, supplemental price curve hash, and validity
+     * conditions. This hash is used along with the current domain separator of this contract to verify
+     * the adjuster's signature on the adjustment.
+     * @param adjustment The adjustment parameters from the adjuster.
+     * @param claimHash The hash of the claim being filled.
+     * @return adjustmentHash The EIP-712 hash of the adjustment.
+     */
     function _toAdjustmentHash(Adjustment calldata adjustment, bytes32 claimHash)
         internal
         pure
