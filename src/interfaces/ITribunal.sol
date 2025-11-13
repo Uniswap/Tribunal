@@ -331,6 +331,28 @@ interface ITribunal {
         returns (DispositionDetails[] memory details);
 
     /**
+     * @notice Derives fill amounts and claim amounts from fill components.
+     * @param maximumClaimAmounts The maximum amounts to claim.
+     * @param components The fill components.
+     * @param priceCurve The price curve to apply.
+     * @param targetBlock The target block number.
+     * @param fillBlock The fill block number.
+     * @param baselinePriorityFee The baseline priority fee.
+     * @param scalingFactor The scaling factor.
+     * @return fillAmounts The derived fill amounts for each component.
+     * @return claimAmounts The derived claim amounts.
+     */
+    function deriveAmountsFromComponents(
+        Lock[] calldata maximumClaimAmounts,
+        FillComponent[] calldata components,
+        uint256[] memory priceCurve,
+        uint256 targetBlock,
+        uint256 fillBlock,
+        uint256 baselinePriorityFee,
+        uint256 scalingFactor
+    ) external view returns (uint256[] memory fillAmounts, uint256[] memory claimAmounts);
+
+    /**
      * @notice Derives the mandate hash using EIP-712 typed data hashing.
      * @dev The mandate contains the adjuster address and an array of possible fills that enable conditional execution.
      * @param mandate The mandate containing adjuster and fills array.
@@ -363,6 +385,16 @@ interface ITribunal {
      * @return The derived fill component hash.
      */
     function deriveFillComponentHash(FillComponent calldata component)
+        external
+        pure
+        returns (bytes32);
+
+    /**
+     * @notice Derives the hash of the fill components array.
+     * @param components The fill components array.
+     * @return The hash of the fill components array.
+     */
+    function deriveFillComponentsHash(FillComponent[] calldata components)
         external
         pure
         returns (bytes32);
@@ -424,4 +456,28 @@ interface ITribunal {
      * @return The contract name.
      */
     function name() external pure returns (string memory);
+
+    /**
+     * @notice External view function for reading a value from persistent storage.
+     * @param slot The storage slot to read from.
+     * @return The value stored in the specified persistent storage slot.
+     */
+    function extsload(bytes32 slot) external view returns (bytes32);
+
+    /**
+     * @notice External view function for reading multiple values from persistent storage.
+     * @param slots An array of storage slots to read from.
+     * @return An array of values stored in the specified persistent storage slots.
+     */
+    function extsload(bytes32[] calldata slots) external view returns (bytes32[] memory);
+
+    /**
+     * @notice Returns the address that initiated the current protected call sequence.
+     * @dev Reads from transient storage to expose the reentrancy guard state. This is useful
+     * for determining if execution is currently within a nonReentrant context and for
+     * verifying the origination point of the current call.
+     * @return lockHolder The address of the original caller when executing within a
+     * nonReentrant function, or address(0) if the reentrancy guard is not currently active.
+     */
+    function reentrancyGuardStatus() external view returns (address lockHolder);
 }
