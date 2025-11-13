@@ -20,6 +20,8 @@ Tribunal enables sponsors (token holders) to auction tokens held in resource loc
 
 The protocol doesn't dictate how claims are processed across chains—that responsibility falls to the designated arbiter. Tribunal simply determines who won the auction and what amounts should be claimable, then makes that information available through various channels including dispatch callbacks, state queries, and direct on-chain claims.
 
+Tribunal Version 0 is deployed to `0x000000000000790009689f43bAedb61D67D45bB8` on [Mainnet](https://etherscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Unichain](https://uniscan.xyz/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Base](https://basescan.org/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Arbitrum One](https://arbiscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code), and [Optimism](https://optimistic.etherscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code) (as well as each of their respective testnets), and can be freely deployed to new EVM chains by replicating the `to` and `data` fields on the deployment transaction.
+
 ### Integration with The Compact
 
 Tribunal is deeply integrated with [The Compact](https://github.com/Uniswap/the-compact), a protocol for managing token deposits and claims through resource locks. The input tokens that fillers receive are held in Compact resource locks. All claims against these locks are processed through The Compact's infrastructure. The settlement logic leverages The Compact's allocation and claim mechanisms to ensure secure token transfers. Sponsor signatures follow The Compact's EIP-712 structure, with Tribunal-specific witness data embedded within the compact registration.
