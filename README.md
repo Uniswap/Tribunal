@@ -72,10 +72,11 @@ Time-based pricing is defined as an array of duration/scaling-factor pairs that 
 Example curve:
 ```solidity
 [
-  encode(100 blocks, 1.5e18),  // 150% for first 100 blocks
-  encode(0 blocks, 1.2e18),     // Instant jump to 120%
-  encode(200 blocks, 1.1e18),   // Decay to 110% over 200 blocks
-  // Defaults to 1e18 (neutral) if auction continues beyond specified duration
+  encode(100 blocks, 1.5e18),  // Decay from 150% to 120% over first 100 blocks
+  encode(0 blocks, 1.2e18),    // Instant value at 120% at block 100
+  encode(0 blocks, 1.1e18),    // Instant jump to 110% at block 100
+  encode(200 blocks, 1.1e18),  // Decay from 110% to 100% (1e18) over next 200 blocks
+  // Reverts with PriceCurveBlocksExceeded if auction continues beyond 300 blocks
 ]
 ```
 
