@@ -42,7 +42,9 @@ import {
     MANDATE_LOCK_TYPEHASH,
     COMPACT_TYPEHASH_WITH_MANDATE,
     ADJUSTMENT_TYPEHASH,
-    WITNESS_TYPESTRING
+    WITNESS_TYPESTRING,
+    TAG_ALONG_CLAIM_TYPEHASH,
+    TAG_ALONG_MANDATE_TYPEHASH
 } from "./types/TribunalTypeHashes.sol";
 
 /**
@@ -239,10 +241,11 @@ contract Tribunal is BlockNumberish, ITribunal {
     function dispatch(
         BatchCompact calldata compact,
         bytes32 mandateHash,
+        bytes32 compactTypehash,
         DispatchParameters calldata dispatchParams
     ) external payable nonReentrant returns (bytes32 claimHash, uint256[] memory claimAmounts) {
         // Derive claim hash.
-        claimHash = deriveClaimHash(compact, mandateHash);
+        claimHash = _deriveClaimHash(compact, mandateHash, LOCK_TYPEHASH, compactTypehash);
 
         // Check if claim has been filled.
         bytes32 claimant = _dispositions[claimHash];
@@ -265,6 +268,35 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
 
         return (claimHash, claimAmounts);
+    }
+
+    /// @inheritdoc ITribunal
+    function fillTagAlong(
+        BatchCompact calldata compact,
+        bytes32 tagAlongClaimHash,
+        bytes32 claimant
+    ) external returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts) {
+        (claimHash, mandateHash, claimAmounts) = _fillTagAlong(compact, tagAlongClaimHash, claimant);
+    }
+
+    /// @inheritdoc ITribunal
+    function fillAndDispatchTagAlong(
+        BatchCompact calldata compact,
+        bytes32 tagAlongClaimHash,
+        bytes32 claimant,
+        DispatchParameters calldata dispatchParameters
+    )
+        external
+        payable
+        nonReentrant
+        returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts)
+    {
+        (claimHash, mandateHash, claimAmounts) = _fillTagAlong(compact, tagAlongClaimHash, claimant);
+
+        // Trigger dispatch callback to relay information to provided target.
+        _performDispatchCallback(
+            compact, mandateHash, claimHash, claimant, claimAmounts, dispatchParameters
+        );
     }
 
     /// @inheritdoc ITribunal
@@ -879,6 +911,56 @@ contract Tribunal is BlockNumberish, ITribunal {
 
         // Perform recipient callback if specified.
         performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
+    }
+
+    function _fillTagAlong(
+        BatchCompact calldata compact,
+        bytes32 tagAlongClaimHash,
+        bytes32 claimant
+    ) internal returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts) {
+        (claimHash, mandateHash) = _toTagAlongClaimHash(compact, tagAlongClaimHash);
+
+        // Check the tag along was not previously filled
+        if (_dispositions[claimHash] != bytes32(0)) {
+            revert AlreadyFilled();
+        }
+
+        // Get the scaling factor for the tag along fill
+        uint256 scalingFactor = _getClaimReductionScalingFactor(tagAlongClaimHash);
+
+        bytes32 originalFiller = _dispositions[tagAlongClaimHash];
+
+        // If claim was cancelled, anyone can fill (for a zero amount). Otherwise, the original filler must be the caller.
+        assembly ("memory-safe") {
+            // To pass, either the originalFiller must be the caller, or the scaling factor must be 0 (indicating a cancelled claim)
+            if mul(
+                iszero(
+                    eq(and(0xffffffffffffffffffffffffffffffffffffffff, originalFiller), caller())
+                ),
+                scalingFactor
+            ) {
+                mstore(0, 0x6770cd44) // ValidityConditionsNotMet()
+                revert(0x1c, 0x04)
+            }
+        }
+
+        // Store the scalingFactor for the tag along claim
+        _claimReductionScalingFactors[claimHash] = scalingFactor;
+        // Set the disposition for the tag along claim.
+        _dispositions[claimHash] = claimant;
+
+        // Compute claim amounts using the stored scaling factor.
+        claimAmounts = new uint256[](compact.commitments.length);
+        for (uint256 i = 0; i < compact.commitments.length; i++) {
+            claimAmounts[i] = compact.commitments[i].amount.mulWad(scalingFactor);
+        }
+
+        // Emit the fill event.
+        emit Fill(
+            compact.sponsor, claimant, claimHash, new FillRecipient[](0), claimAmounts, block.number
+        );
+
+        return (claimHash, mandateHash, claimAmounts);
     }
 
     /**
@@ -1738,5 +1820,26 @@ contract Tribunal is BlockNumberish, ITribunal {
                 adjustment.validityConditions
             )
         );
+    }
+
+    function _toTagAlongClaimHash(BatchCompact calldata compact, bytes32 tagAlongHash)
+        internal
+        pure
+        returns (bytes32 claimHash, bytes32 mandateHash)
+    {
+        mandateHash = keccak256(abi.encode(TAG_ALONG_MANDATE_TYPEHASH, tagAlongHash));
+        bytes32 commitmentsHash = _deriveCommitmentsHash(compact.commitments, LOCK_TYPEHASH);
+        claimHash = keccak256(
+            abi.encode(
+                TAG_ALONG_CLAIM_TYPEHASH,
+                compact.arbiter,
+                compact.sponsor,
+                compact.nonce,
+                compact.expires,
+                commitmentsHash,
+                mandateHash
+            )
+        );
+        return (claimHash, mandateHash);
     }
 }

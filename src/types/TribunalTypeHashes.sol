@@ -109,6 +109,11 @@ string constant COMPACT_WITH_MANDATE_TYPESTRING =
 string constant ADJUSTMENT_TYPESTRING =
     "Adjustment(bytes32 claimHash,uint256 fillIndex,uint256 targetBlock,uint256[] supplementalPriceCurve,bytes32 validityConditions)";
 
+string constant TAG_ALONG_CLAIM_TYPESTRING =
+    "BatchCompact(address arbiter,address sponsor,uint256 nonce,uint256 expires,Lock[] commitments,TagAlongMandate mandate)TagAlongMandate(bytes32 tagAlongHash)";
+
+string constant TAG_ALONG_MANDATE_TYPESTRING = "TagAlongMandate(bytes32 tagAlongHash)";
+
 // Typehash constants (hardcoded to reduce init code size)
 bytes32 constant MANDATE_TYPEHASH =
     0xd98eceb6e5c7770b3b664a99c269855402fe5255294a30970d25376caea662c6;
@@ -133,6 +138,12 @@ bytes32 constant COMPACT_TYPEHASH_WITH_MANDATE =
 
 bytes32 constant ADJUSTMENT_TYPEHASH =
     0xe829b2a82439f37ac7578a226e337d334e0ee0da2f05ab63891c19cb84714414;
+
+bytes32 constant TAG_ALONG_CLAIM_TYPEHASH =
+    0x0443bde30c0a78792b6c6875c3b4e1854beab54875111ee08adb5a88bdada166;
+
+bytes32 constant TAG_ALONG_MANDATE_TYPEHASH =
+    0x94ea98712db3ccec921514cbe6f3849bbf2206cc997070fed98c273af46525d3;
 
 // Witness typestring (partial string that is provided to The Compact by Tribunal to process claims)
 string constant WITNESS_TYPESTRING =

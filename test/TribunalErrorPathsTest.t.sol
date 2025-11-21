@@ -17,7 +17,10 @@ import {
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {ITheCompact} from "the-compact/src/interfaces/ITheCompact.sol";
-import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
+import {
+    ADJUSTMENT_TYPEHASH,
+    COMPACT_TYPEHASH_WITH_MANDATE
+} from "../src/types/TribunalTypeHashes.sol";
 
 /**
  * @title TribunalErrorPathsTest
@@ -328,7 +331,7 @@ contract TribunalErrorPathsTest is Test {
 
         // Dispatch - the checker will read reentrancy status during the callback
         vm.prank(address(this));
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
 
         // Verify the checker recorded that the status was set to our address
         assertEq(
@@ -364,7 +367,7 @@ contract TribunalErrorPathsTest is Test {
         // This should trigger the ReentrancyGuard() revert on lines 107-108
         vm.prank(sponsor);
         vm.expectRevert(abi.encodeWithSignature("ReentrancyGuard()"));
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     /**
@@ -649,7 +652,7 @@ contract ReentrancyAttacker {
         DispatchParameters memory params = DispatchParameters({
             chainId: block.chainid, target: address(this), value: 0, context: ""
         });
-        tribunal.dispatch(compact, mandateHash, params);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, params);
         return this.dispatchCallback.selector;
     }
 }

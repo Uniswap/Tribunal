@@ -19,7 +19,10 @@ import {
     BatchClaim,
     DispatchParameters
 } from "../src/types/TribunalStructs.sol";
-import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
+import {
+    ADJUSTMENT_TYPEHASH,
+    COMPACT_TYPEHASH_WITH_MANDATE
+} from "../src/types/TribunalTypeHashes.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 /**
@@ -116,7 +119,7 @@ contract TribunalAdditionalCoverageTest is Test {
         });
 
         vm.expectRevert(ITribunal.DispatchNotAvailable.selector);
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     // ============ Test Invalid Recipient Callback ============
@@ -322,7 +325,7 @@ contract TribunalAdditionalCoverageTest is Test {
         });
 
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     // ============ Test Invalid Adjustment ============

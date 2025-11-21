@@ -23,6 +23,7 @@ import {
     BatchClaim
 } from "../src/types/TribunalStructs.sol";
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
+import {COMPACT_TYPEHASH_WITH_MANDATE} from "../src/types/TribunalTypeHashes.sol";
 
 contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
     using FixedPointMathLib for uint256;
@@ -395,7 +396,9 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         vm.recordLogs();
 
         vm.prank(address(filler));
-        tribunal.dispatch{value: 1 ether}(claim.compact, mandateHash, dispatchParams);
+        tribunal.dispatch{
+            value: 1 ether
+        }(claim.compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
 
         assertTrue(dispatchTarget.callbackCalled());
         assertEq(dispatchTarget.receivedChainId(), targetChainId);
@@ -495,7 +498,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
         );
 
         vm.prank(sponsor);
-        tribunal.dispatch(claim.compact, mandateHash, dispatchParams);
+        tribunal.dispatch(claim.compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
 
         assertTrue(dispatchTarget.callbackCalled());
         assertEq(dispatchTarget.receivedChainId(), targetChainId);
@@ -613,7 +616,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         vm.expectRevert("MockDispatchTarget: forced revert");
-        tribunal.dispatch(claim.compact, mandateHash, dispatchParams);
+        tribunal.dispatch(claim.compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     function test_Dispatch_RevertsOnWrongSelector() public {
@@ -654,7 +657,7 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         vm.prank(address(filler));
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
-        tribunal.dispatch(claim.compact, mandateHash, dispatchParams);
+        tribunal.dispatch(claim.compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     function test_CancelAndDispatch_RevertsOnWrongSelector() public {
@@ -802,7 +805,9 @@ contract TribunalDispatchTest is DeployTheCompact, ITribunalCallback {
 
         // Send 1 ether, but only 0.3 ether will be used
         vm.prank(address(filler));
-        tribunal.dispatch{value: 1 ether}(claim.compact, mandateHash, dispatchParams);
+        tribunal.dispatch{
+            value: 1 ether
+        }(claim.compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
 
         assertTrue(dispatchTarget.callbackCalled());
         assertEq(dispatchTarget.receivedValue(), 0.3 ether);
