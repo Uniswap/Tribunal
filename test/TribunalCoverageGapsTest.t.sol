@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
 import {
@@ -24,7 +23,7 @@ import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
  * @notice Tests to improve code coverage for identified gaps
  */
 contract TribunalCoverageGapsTest is Test {
-    ERC7683Tribunal public tribunal;
+    Tribunal public tribunal;
     MockERC20 public token;
     address public sponsor;
     address public filler;
@@ -33,7 +32,7 @@ contract TribunalCoverageGapsTest is Test {
     address public arbiter;
 
     function setUp() public {
-        tribunal = new ERC7683Tribunal();
+        tribunal = new Tribunal();
         token = new MockERC20();
         sponsor = makeAddr("Sponsor");
         filler = makeAddr("Filler");
@@ -52,44 +51,12 @@ contract TribunalCoverageGapsTest is Test {
         vm.createSelectFork("https://arb1.arbitrum.io/rpc");
 
         // Deploy tribunal on Arbitrum to trigger the arbBlockNumber path
-        new ERC7683Tribunal();
+        new Tribunal();
 
         // The block number should come from ArbSys
         // We can't easily test the exact value, but we can verify it doesn't revert
         // and that the contract was deployed successfully on Arbitrum
         assertEq(block.chainid, 42161, "Should be on Arbitrum");
-    }
-
-    // ============ ERC7683Tribunal.getFillerData Coverage ============
-
-    /**
-     * @notice Test getFillerData function
-     * @dev Covers lines 52-57 in ERC7683Tribunal.sol
-     */
-    function test_GetFillerData() public view {
-        uint256 targetBlock = 100;
-        bytes32 claimantAddress = bytes32(uint256(uint160(filler)));
-
-        Adjustment memory adjustment = Adjustment({
-            adjuster: adjuster,
-            fillIndex: 0,
-            targetBlock: targetBlock,
-            supplementalPriceCurve: new uint256[](0),
-            validityConditions: bytes32(0),
-            adjustmentAuthorization: hex"1234567890"
-        });
-
-        bytes memory fillerData = tribunal.getFillerData(adjustment, claimantAddress, targetBlock);
-
-        // Verify the encoded data
-        (Adjustment memory decodedAdjustment, bytes32 decodedClaimant, uint256 decodedFillBlock) =
-            abi.decode(fillerData, (Adjustment, bytes32, uint256));
-
-        assertEq(decodedAdjustment.adjuster, adjuster);
-        assertEq(decodedAdjustment.fillIndex, 0);
-        assertEq(decodedAdjustment.targetBlock, targetBlock);
-        assertEq(decodedClaimant, claimantAddress);
-        assertEq(decodedFillBlock, targetBlock);
     }
 
     // ============ Tribunal.nonReentrant Revert Path Coverage ============

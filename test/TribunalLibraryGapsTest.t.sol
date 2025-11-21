@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {PriceCurveLib, PriceCurveElement} from "../src/lib/PriceCurveLib.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
@@ -22,7 +21,7 @@ import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
  * @notice Tests to cover library function gaps (DomainLib, PriceCurveLib)
  */
 contract TribunalLibraryGapsTest is Test {
-    ERC7683Tribunal public tribunal;
+    Tribunal public tribunal;
     MockERC20 public token;
     address public sponsor;
     address public filler;
@@ -31,7 +30,7 @@ contract TribunalLibraryGapsTest is Test {
     address public arbiter;
 
     function setUp() public {
-        tribunal = new ERC7683Tribunal();
+        tribunal = new Tribunal();
         token = new MockERC20();
         sponsor = makeAddr("Sponsor");
         filler = makeAddr("Filler");

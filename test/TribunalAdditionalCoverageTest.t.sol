@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {MockAllocator} from "./mocks/MockAllocator.sol";
