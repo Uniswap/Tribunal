@@ -16,7 +16,10 @@ import {
     DispositionDetails,
     DispatchParameters
 } from "../src/types/TribunalStructs.sol";
-import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
+import {
+    ADJUSTMENT_TYPEHASH,
+    COMPACT_TYPEHASH_WITH_MANDATE
+} from "../src/types/TribunalTypeHashes.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 import {PriceCurveLib} from "../src/lib/PriceCurveLib.sol";
 
@@ -424,7 +427,7 @@ contract TribunalRemainingCoverageGapsTest is Test {
         });
 
         vm.expectRevert(abi.encodeWithSignature("InvalidDispatchCallback()"));
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     // ============ Helper Functions ============

@@ -218,6 +218,7 @@ interface ITribunal {
      * where a claimant has already been recorded. Not needed for read-based systems that can query state directly.
      * @param compact The compact parameters from the original fill.
      * @param mandateHash The mandate hash from the original fill.
+     * @param compactTypehash The typehash of the compact.
      * @param dispatch The dispatch callback parameters (target, chainId, value, context).
      * @return claimHash The claim hash derived from the compact and mandate.
      * @return claimAmounts The amounts of tokens claimed.
@@ -225,8 +226,43 @@ interface ITribunal {
     function dispatch(
         BatchCompact calldata compact,
         bytes32 mandateHash,
+        bytes32 compactTypehash,
         DispatchParameters calldata dispatch
     ) external payable returns (bytes32 claimHash, uint256[] memory claimAmounts);
+
+    /**
+     * @notice Fill a tag along claim. Does not require any assets to be provided.
+     * @dev The tag along claim can only be filled if and by whom the source claim has been filled.
+     * @param compact The compact parameters and constraints.
+     * @param conditionalClaimHash The hash of the conditional claim.
+     * @param claimant The recipient of claimed tokens on the claim chain.
+     * @return claimHash The derived claim hash.
+     */
+    function fillConditional(
+        BatchCompact calldata compact,
+        bytes32 conditionalClaimHash,
+        bytes32 claimant
+    ) external returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts);
+
+    /**
+     *
+     * @param compact The compact parameters and constraints.
+     * @param conditionalClaimHash The hash of the conditional claim.
+     * @param claimant The recipient of claimed tokens on the claim chain.
+     * @param dispatchParameters The dispatch callback parameters (target, chainId, value, context).
+     * @return claimHash The derived claim hash.
+     * @return mandateHash The derived mandate hash.
+     * @return claimAmounts The amounts of tokens claimed.
+     */
+    function fillAndDispatchConditional(
+        BatchCompact calldata compact,
+        bytes32 conditionalClaimHash,
+        bytes32 claimant,
+        DispatchParameters calldata dispatchParameters
+    )
+        external
+        payable
+        returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts);
 
     /**
      * @notice Handles token receipt on destination chains after bridging, with race condition protection.

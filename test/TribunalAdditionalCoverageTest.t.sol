@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {MockAllocator} from "./mocks/MockAllocator.sol";
@@ -19,7 +18,10 @@ import {
     BatchClaim,
     DispatchParameters
 } from "../src/types/TribunalStructs.sol";
-import {ADJUSTMENT_TYPEHASH} from "../src/types/TribunalTypeHashes.sol";
+import {
+    ADJUSTMENT_TYPEHASH,
+    COMPACT_TYPEHASH_WITH_MANDATE
+} from "../src/types/TribunalTypeHashes.sol";
 import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
 
 /**
@@ -116,7 +118,7 @@ contract TribunalAdditionalCoverageTest is Test {
         });
 
         vm.expectRevert(ITribunal.DispatchNotAvailable.selector);
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     // ============ Test Invalid Recipient Callback ============
@@ -322,7 +324,7 @@ contract TribunalAdditionalCoverageTest is Test {
         });
 
         vm.expectRevert(ITribunal.InvalidDispatchCallback.selector);
-        tribunal.dispatch(compact, mandateHash, dispatchParams);
+        tribunal.dispatch(compact, mandateHash, COMPACT_TYPEHASH_WITH_MANDATE, dispatchParams);
     }
 
     // ============ Test Invalid Adjustment ============

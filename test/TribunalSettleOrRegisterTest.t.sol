@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockTheCompact} from "./mocks/MockTheCompact.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
@@ -23,7 +22,7 @@ import {BatchCompact, Lock} from "the-compact/src/types/EIP712Types.sol";
  * @notice Comprehensive tests for settleOrRegister function paths to improve coverage
  */
 contract TribunalSettleOrRegisterTest is Test {
-    ERC7683Tribunal public tribunal;
+    Tribunal public tribunal;
     MockERC20 public token;
     MockTheCompact public mockCompact;
     address public sponsor;
@@ -34,7 +33,7 @@ contract TribunalSettleOrRegisterTest is Test {
     address public recipient;
 
     function setUp() public {
-        tribunal = new ERC7683Tribunal();
+        tribunal = new Tribunal();
         token = new MockERC20();
         sponsor = makeAddr("Sponsor");
         filler = makeAddr("Filler");

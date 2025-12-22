@@ -3,7 +3,6 @@ pragma solidity ^0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {Tribunal} from "../src/Tribunal.sol";
-import {ERC7683Tribunal} from "../src/ERC7683Tribunal.sol";
 import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockAllocator} from "./mocks/MockAllocator.sol";
 import {ITribunal} from "../src/interfaces/ITribunal.sol";
@@ -19,7 +18,7 @@ import {ITheCompact} from "the-compact/src/interfaces/ITheCompact.sol";
  * @dev Tests proper calldata validation and interaction with allocator and TheCompact
  */
 contract TribunalOnChainAllocationTest is Test, DeployTheCompact {
-    ERC7683Tribunal public tribunal;
+    Tribunal public tribunal;
     MockERC20 public token;
     MockAllocator public allocator;
     TheCompact public theCompact;
@@ -41,7 +40,7 @@ contract TribunalOnChainAllocationTest is Test, DeployTheCompact {
         theCompact = deployTheCompact();
 
         // Deploy contracts
-        tribunal = new ERC7683Tribunal();
+        tribunal = new Tribunal();
         token = new MockERC20();
         allocator = new MockAllocator();
 
