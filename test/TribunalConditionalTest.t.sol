@@ -25,13 +25,13 @@ import {
 import {BatchCompact, Lock, LOCK_TYPEHASH} from "the-compact/src/types/EIP712Types.sol";
 import {
     COMPACT_TYPEHASH_WITH_MANDATE,
-    TAG_ALONG_MANDATE_TYPEHASH,
-    TAG_ALONG_CLAIM_TYPEHASH,
+    CONDITIONAL_MANDATE_TYPEHASH,
+    CONDITIONAL_CLAIM_TYPEHASH,
     MANDATE_TYPEHASH,
     ADJUSTMENT_TYPEHASH
 } from "../src/types/TribunalTypeHashes.sol";
 
-contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
+contract TribunalConditionalTest is DeployTheCompact, ITribunalCallback {
     using FixedPointMathLib for uint256;
 
     Tribunal public tribunal;
@@ -97,7 +97,7 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
         FillRequirement[] calldata
     ) external {}
 
-    function testFillTagAlong_Success() public {
+    function testFillConditional_Success() public {
         // 1. Setup a regular fill
         (
             BatchCompact memory compact,
@@ -114,18 +114,18 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
             tribunal.fill(compact, mandate, adjustment, fillHashes, claimant, block.number);
 
         // 3. Prepare tag along
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
 
-        // 4. Execute fillTagAlong
+        // 4. Execute fillConditional
         vm.prank(address(filler)); // Must be original filler
-        (bytes32 claimHash, bytes32 tagAlongMandateHash, uint256[] memory claimAmounts) =
-            tribunal.fillTagAlong(compact, originalClaimHash, tagAlongClaimant);
+        (bytes32 claimHash, bytes32 conditionalMandateHash, uint256[] memory claimAmounts) =
+            tribunal.fillConditional(compact, originalClaimHash, conditionalClaimant);
 
         // 5. Verify results
-        assertTrue(claimHash == _deriveTagAlongClaimHash(compact, originalClaimHash));
+        assertTrue(claimHash == _deriveConditionalClaimHash(compact, originalClaimHash));
         assertTrue(
-            tagAlongMandateHash
-                == keccak256(abi.encode(TAG_ALONG_MANDATE_TYPEHASH, originalClaimHash))
+            conditionalMandateHash
+                == keccak256(abi.encode(CONDITIONAL_MANDATE_TYPEHASH, originalClaimHash))
         );
 
         // Verify claim amounts (should match original if scaling is neutral, or scaled)
@@ -134,10 +134,10 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
         assertEq(claimAmounts[0], compact.commitments[0].amount);
 
         // Verify disposition
-        assertEq(tribunal.filled(claimHash), tagAlongClaimant);
+        assertEq(tribunal.filled(claimHash), conditionalClaimant);
     }
 
-    function testFillTagAlong_Cancelled(address anyCaller) public {
+    function testFillConditional_Cancelled(address anyCaller) public {
         // 1. Setup a regular fill scenario
         (
             BatchCompact memory compact,
@@ -151,21 +151,21 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
         vm.prank(sponsor);
         bytes32 cancelledClaimHash = tribunal.cancel(compact, mandateHash);
 
-        // 3. Execute fillTagAlong (can be anyone)
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        // 3. Execute fillConditional (can be anyone)
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
 
         vm.prank(anyCaller); // Random caller
         (bytes32 claimHash,, uint256[] memory claimAmounts) =
-            tribunal.fillTagAlong(compact, cancelledClaimHash, tagAlongClaimant);
+            tribunal.fillConditional(compact, cancelledClaimHash, conditionalClaimant);
 
         // 4. Verify amounts are zero
         assertEq(claimAmounts[0], 0);
 
         // Verify disposition
-        assertEq(tribunal.filled(claimHash), tagAlongClaimant);
+        assertEq(tribunal.filled(claimHash), conditionalClaimant);
     }
 
-    function testFillTagAlong_WithScalingReduction() public {
+    function testFillConditional_WithScalingReduction() public {
         // 1. Setup scenario with exact-out parameters (scalingFactor < 1e18)
 
         // Create commitment
@@ -270,24 +270,24 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
         assertEq(originalClaimAmounts[0], components[0].minimumFillAmount * 9 / 10); // 100e18 * 0.9
         assertEq(tribunal.claimReductionScalingFactor(originalClaimHash), 0.9e18);
 
-        // 3. Execute fillTagAlong
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        // 3. Execute fillConditional
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
         vm.prank(address(filler));
-        (bytes32 tagAlongClaimHash,, uint256[] memory tagAlongClaimAmounts) =
-            tribunal.fillTagAlong(compact, originalClaimHash, tagAlongClaimant);
+        (bytes32 conditionalClaimHash,, uint256[] memory conditionalClaimAmounts) =
+            tribunal.fillConditional(compact, originalClaimHash, conditionalClaimant);
 
         // 4. Verify tag along results
         // Should also be scaled by the stored factor (0.9e18)
-        assertEq(tagAlongClaimAmounts[0], compact.commitments[0].amount * 9 / 10);
+        assertEq(conditionalClaimAmounts[0], compact.commitments[0].amount * 9 / 10);
 
         // Verify disposition
-        assertEq(tribunal.filled(tagAlongClaimHash), tagAlongClaimant);
+        assertEq(tribunal.filled(conditionalClaimHash), conditionalClaimant);
 
         // Verify scaling factor is stored for tag along claim as well
-        assertEq(tribunal.claimReductionScalingFactor(tagAlongClaimHash), 0.9e18);
+        assertEq(tribunal.claimReductionScalingFactor(conditionalClaimHash), 0.9e18);
     }
 
-    function testFillTagAlong_Revert_NotOriginalFiller() public {
+    function testFillConditional_Revert_NotOriginalFiller() public {
         // 1. Setup and fill original
         (
             BatchCompact memory compact,
@@ -303,15 +303,15 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
             tribunal.fill(compact, mandate, adjustment, fillHashes, claimant, block.number);
 
         // 2. Try to fill tag along as someone else
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
         vm.prank(address(0xBad));
 
         // Should revert with ValidityConditionsNotMet (encoded as 0x6770cd44 in assembly)
         vm.expectRevert(bytes4(0x6770cd44));
-        tribunal.fillTagAlong(compact, originalClaimHash, tagAlongClaimant);
+        tribunal.fillConditional(compact, originalClaimHash, conditionalClaimant);
     }
 
-    function testFillTagAlong_Revert_AlreadyFilled() public {
+    function testFillConditional_Revert_AlreadyFilled() public {
         // 1. Setup and fill original
         (
             BatchCompact memory compact,
@@ -327,17 +327,17 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
             tribunal.fill(compact, mandate, adjustment, fillHashes, claimant, block.number);
 
         // 2. Fill tag along first time
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
         vm.prank(address(filler));
-        tribunal.fillTagAlong(compact, originalClaimHash, tagAlongClaimant);
+        tribunal.fillConditional(compact, originalClaimHash, conditionalClaimant);
 
         // 3. Try to fill tag along again
         vm.prank(address(filler));
         vm.expectRevert(ITribunal.AlreadyFilled.selector);
-        tribunal.fillTagAlong(compact, originalClaimHash, tagAlongClaimant);
+        tribunal.fillConditional(compact, originalClaimHash, conditionalClaimant);
     }
 
-    function testFillAndDispatchTagAlong() public {
+    function testFillAndDispatchConditional() public {
         // 1. Setup and fill original
         (
             BatchCompact memory compact,
@@ -357,35 +357,37 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
             target: address(dispatchTarget), chainId: block.chainid, value: 0, context: ""
         });
 
-        // 3. Execute fillAndDispatchTagAlong
-        bytes32 tagAlongClaimant = bytes32(uint256(uint160(address(this))));
+        // 3. Execute fillAndDispatchConditional
+        bytes32 conditionalClaimant = bytes32(uint256(uint160(address(this))));
         vm.prank(address(filler));
 
         vm.expectEmit(true, true, true, true);
         emit Dispatch(
             address(dispatchTarget),
             block.chainid,
-            tagAlongClaimant,
-            _deriveTagAlongClaimHash(compact, originalClaimHash)
+            conditionalClaimant,
+            _deriveConditionalClaimHash(compact, originalClaimHash)
         );
 
-        tribunal.fillAndDispatchTagAlong(
-            compact, originalClaimHash, tagAlongClaimant, dispatchParams
+        tribunal.fillAndDispatchConditional(
+            compact, originalClaimHash, conditionalClaimant, dispatchParams
         );
 
         // Verify dispatch target received callback
         assertEq(
-            dispatchTarget.receivedClaimHash(), _deriveTagAlongClaimHash(compact, originalClaimHash)
+            dispatchTarget.receivedClaimHash(),
+            _deriveConditionalClaimHash(compact, originalClaimHash)
         );
     }
 
     // Helper to derive tag along claim hash for assertions
-    function _deriveTagAlongClaimHash(BatchCompact memory compact, bytes32 tagAlongClaimHash)
+    function _deriveConditionalClaimHash(BatchCompact memory compact, bytes32 conditionalClaimHash)
         internal
         pure
         returns (bytes32)
     {
-        bytes32 mandateHash = keccak256(abi.encode(TAG_ALONG_MANDATE_TYPEHASH, tagAlongClaimHash));
+        bytes32 mandateHash =
+            keccak256(abi.encode(CONDITIONAL_MANDATE_TYPEHASH, conditionalClaimHash));
 
         bytes32[] memory commitmentsHashes = new bytes32[](compact.commitments.length);
         for (uint256 i = 0; i < compact.commitments.length; i++) {
@@ -402,7 +404,7 @@ contract TribunalTagAlongTest is DeployTheCompact, ITribunalCallback {
 
         return keccak256(
             abi.encode(
-                TAG_ALONG_CLAIM_TYPEHASH,
+                CONDITIONAL_CLAIM_TYPEHASH,
                 compact.arbiter,
                 compact.sponsor,
                 compact.nonce,

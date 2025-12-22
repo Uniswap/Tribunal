@@ -234,29 +234,29 @@ interface ITribunal {
      * @notice Fill a tag along claim. Does not require any assets to be provided.
      * @dev The tag along claim can only be filled if and by whom the source claim has been filled.
      * @param compact The compact parameters and constraints.
-     * @param tagAlongClaimHash The hash of the tag along claim.
+     * @param conditionalClaimHash The hash of the conditional claim.
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @return claimHash The derived claim hash.
      */
-    function fillTagAlong(
+    function fillConditional(
         BatchCompact calldata compact,
-        bytes32 tagAlongClaimHash,
+        bytes32 conditionalClaimHash,
         bytes32 claimant
     ) external returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts);
 
     /**
      *
      * @param compact The compact parameters and constraints.
-     * @param tagAlongClaimHash The hash of the tag along claim.
+     * @param conditionalClaimHash The hash of the conditional claim.
      * @param claimant The recipient of claimed tokens on the claim chain.
      * @param dispatchParameters The dispatch callback parameters (target, chainId, value, context).
      * @return claimHash The derived claim hash.
      * @return mandateHash The derived mandate hash.
      * @return claimAmounts The amounts of tokens claimed.
      */
-    function fillAndDispatchTagAlong(
+    function fillAndDispatchConditional(
         BatchCompact calldata compact,
-        bytes32 tagAlongClaimHash,
+        bytes32 conditionalClaimHash,
         bytes32 claimant,
         DispatchParameters calldata dispatchParameters
     )

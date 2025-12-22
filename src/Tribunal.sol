@@ -43,8 +43,8 @@ import {
     COMPACT_TYPEHASH_WITH_MANDATE,
     ADJUSTMENT_TYPEHASH,
     WITNESS_TYPESTRING,
-    TAG_ALONG_CLAIM_TYPEHASH,
-    TAG_ALONG_MANDATE_TYPEHASH
+    CONDITIONAL_CLAIM_TYPEHASH,
+    CONDITIONAL_MANDATE_TYPEHASH
 } from "./types/TribunalTypeHashes.sol";
 
 /**
@@ -271,18 +271,19 @@ contract Tribunal is BlockNumberish, ITribunal {
     }
 
     /// @inheritdoc ITribunal
-    function fillTagAlong(
+    function fillConditional(
         BatchCompact calldata compact,
-        bytes32 tagAlongClaimHash,
+        bytes32 conditionalClaimHash,
         bytes32 claimant
     ) external returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts) {
-        (claimHash, mandateHash, claimAmounts) = _fillTagAlong(compact, tagAlongClaimHash, claimant);
+        (claimHash, mandateHash, claimAmounts) =
+            _fillConditional(compact, conditionalClaimHash, claimant);
     }
 
     /// @inheritdoc ITribunal
-    function fillAndDispatchTagAlong(
+    function fillAndDispatchConditional(
         BatchCompact calldata compact,
-        bytes32 tagAlongClaimHash,
+        bytes32 conditionalClaimHash,
         bytes32 claimant,
         DispatchParameters calldata dispatchParameters
     )
@@ -291,7 +292,9 @@ contract Tribunal is BlockNumberish, ITribunal {
         nonReentrant
         returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts)
     {
-        (claimHash, mandateHash, claimAmounts) = _fillTagAlong(compact, tagAlongClaimHash, claimant);
+        (claimHash, mandateHash, claimAmounts) = _fillConditional(
+            compact, conditionalClaimHash, claimant
+        );
 
         // Trigger dispatch callback to relay information to provided target.
         _performDispatchCallback(
@@ -913,12 +916,12 @@ contract Tribunal is BlockNumberish, ITribunal {
         performRecipientCallback(mandate, claimHash, mandateHash, fillAmounts);
     }
 
-    function _fillTagAlong(
+    function _fillConditional(
         BatchCompact calldata compact,
-        bytes32 tagAlongClaimHash,
+        bytes32 conditionalClaimHash,
         bytes32 claimant
     ) internal returns (bytes32 claimHash, bytes32 mandateHash, uint256[] memory claimAmounts) {
-        (claimHash, mandateHash) = _toTagAlongClaimHash(compact, tagAlongClaimHash);
+        (claimHash, mandateHash) = _toConditionalClaimHash(compact, conditionalClaimHash);
 
         // Check the tag along was not previously filled
         if (_dispositions[claimHash] != bytes32(0)) {
@@ -926,9 +929,9 @@ contract Tribunal is BlockNumberish, ITribunal {
         }
 
         // Get the scaling factor for the tag along fill
-        uint256 scalingFactor = _getClaimReductionScalingFactor(tagAlongClaimHash);
+        uint256 scalingFactor = _getClaimReductionScalingFactor(conditionalClaimHash);
 
-        bytes32 originalFiller = _dispositions[tagAlongClaimHash];
+        bytes32 originalFiller = _dispositions[conditionalClaimHash];
 
         // If claim was cancelled, anyone can fill (for a zero amount). Otherwise, the original filler must be the caller.
         assembly ("memory-safe") {
@@ -1822,16 +1825,16 @@ contract Tribunal is BlockNumberish, ITribunal {
         );
     }
 
-    function _toTagAlongClaimHash(BatchCompact calldata compact, bytes32 tagAlongHash)
+    function _toConditionalClaimHash(BatchCompact calldata compact, bytes32 conditionalHash)
         internal
         pure
         returns (bytes32 claimHash, bytes32 mandateHash)
     {
-        mandateHash = keccak256(abi.encode(TAG_ALONG_MANDATE_TYPEHASH, tagAlongHash));
+        mandateHash = keccak256(abi.encode(CONDITIONAL_MANDATE_TYPEHASH, conditionalHash));
         bytes32 commitmentsHash = _deriveCommitmentsHash(compact.commitments, LOCK_TYPEHASH);
         claimHash = keccak256(
             abi.encode(
-                TAG_ALONG_CLAIM_TYPEHASH,
+                CONDITIONAL_CLAIM_TYPEHASH,
                 compact.arbiter,
                 compact.sponsor,
                 compact.nonce,
