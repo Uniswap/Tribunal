@@ -22,6 +22,8 @@ The protocol doesn't dictate how claims are processed across chains—that respo
 
 Tribunal Version 0 is deployed to `0x000000000000790009689f43bAedb61D67D45bB8` on [Mainnet](https://etherscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Unichain](https://uniscan.xyz/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Base](https://basescan.org/address/0x000000000000790009689f43baedb61d67d45bb8#code), [Arbitrum One](https://arbiscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code), and [Optimism](https://optimistic.etherscan.io/address/0x000000000000790009689f43baedb61d67d45bb8#code) (as well as each of their respective testnets), and can be freely deployed to new EVM chains by replicating the `to` and `data` fields on the deployment transaction.
 
+On a chain that runs the Amsterdam (Glamsterdam) gas rules, do not reuse the gas limit of the original deployment transaction. Amsterdam adds state gas for deployed code (EIP-8037, 1,530 gas per byte), so Tribunal (22,522 bytes of code) needs more than 2^24 (16,777,216) gas to deploy. Take the gas limit from `eth_estimateGas` on a node of that chain.
+
 ### Integration with The Compact
 
 Tribunal is deeply integrated with [The Compact](https://github.com/Uniswap/the-compact), a protocol for managing token deposits and claims through resource locks. The input tokens that fillers receive are held in Compact resource locks. All claims against these locks are processed through The Compact's infrastructure. The settlement logic leverages The Compact's allocation and claim mechanisms to ensure secure token transfers. Sponsor signatures follow The Compact's EIP-712 structure, with Tribunal-specific witness data embedded within the compact registration.
